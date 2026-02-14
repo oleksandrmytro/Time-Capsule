@@ -1,0 +1,5 @@
+spring:
+  devtools:
+    restart:
+      additional-paths: target/classes    # ⬅ где Maven кладёт .class‑файлы
+      exclude: static/**,META-INF/**      # ⬅ не следим за статикой и метаданными

@@ -1,0 +1,12 @@
+{
+  "name": "time-capsule-database",
+  "version": "1.0.0",
+  "description": "Database setup and schema management for Secret Santa application",
+  "scripts": {
+    "init-db": "mongosh --file scripts/init_schemas.js",
+    "generate-schemas": "node scripts/generate-schemas.js"
+  },
+  "dependencies": {
+    "mongoose": "^7.0.0"
+  }
+}

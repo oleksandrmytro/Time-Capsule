@@ -1,0 +1,2 @@
+# Application context initializers
+context.initializer.classes=com.oleksandrmytro.timecapsule.config.DotEnvConfig
