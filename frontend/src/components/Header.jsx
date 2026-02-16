@@ -1,6 +1,6 @@
 import React from 'react'
 
-export default function Header({ apiBase, tokens, onGo, onAccount, onLogout }) {
+export default function Header({ apiBase, isAuthenticated, onGo, onAccount, onLogout }) {
   return (
     <header className="header">
       <div>
@@ -10,8 +10,8 @@ export default function Header({ apiBase, tokens, onGo, onAccount, onLogout }) {
       <div className="actions">
         <button className="ghost" onClick={() => onGo('login')}>Login</button>
         <button className="ghost" onClick={() => onGo('register')}>Register</button>
-        {tokens && <button className="ghost" onClick={onAccount}>Account</button>}
-        <button className="ghost" onClick={onLogout} disabled={!tokens}>
+        {isAuthenticated && <button className="ghost" onClick={onAccount}>Account</button>}
+        <button className="ghost" onClick={onLogout} disabled={!isAuthenticated}>
           Logout
         </button>
       </div>

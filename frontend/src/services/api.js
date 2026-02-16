@@ -1,7 +1,25 @@
-const defaultApiBase = 'http://localhost:8080'
+function normalizeApiOrigin(value) {
+  if (!value) return ''
+  return value
+    .replace(/\/+$/, '')
+    .replace(/\/api$/, '')
+}
 
 function getApiBase() {
-  return import.meta.env.VITE_API_BASE || defaultApiBase
+  const fromEnv =
+    import.meta.env.VITE_API_ORIGIN ||
+    import.meta.env.VITE_API_BASE ||
+    import.meta.env.VITE_API_URL
+
+  if (fromEnv) {
+    return normalizeApiOrigin(fromEnv)
+  }
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return normalizeApiOrigin(window.location.origin)
+  }
+
+  return ''
 }
 
 export async function apiRequest(path, { method = 'POST', body, token } = {}) {
@@ -11,6 +29,8 @@ export async function apiRequest(path, { method = 'POST', body, token } = {}) {
   const res = await fetch(`${getApiBase()}${path}`, {
     method,
     headers,
+    credentials: 'include',
+    cache: 'no-store',
     body: body ? JSON.stringify(body) : undefined,
   })
   const text = await res.text()

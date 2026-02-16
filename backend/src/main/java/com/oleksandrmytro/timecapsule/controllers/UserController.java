@@ -5,6 +5,7 @@ import com.oleksandrmytro.timecapsule.models.User;
 import com.oleksandrmytro.timecapsule.responses.UserProfileResponse;
 import com.oleksandrmytro.timecapsule.services.UserService;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -22,7 +23,11 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<UserProfileResponse> me(Authentication auth) {
+    public ResponseEntity<UserProfileResponse> me(Authentication auth, HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+        response.setHeader("Pragma", "no-cache");
+        response.setHeader("Expires", "0");
+
         if (auth == null || !(auth.getPrincipal() instanceof User user)) {
             return ResponseEntity.status(401).build();
         }

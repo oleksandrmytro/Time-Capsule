@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -34,6 +35,8 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
     @Value("${frontend.url:http://localhost}")
     private String defaultFrontendUrl;
+
+    private static final String OAUTH_REDIRECT_PATH = "/auth/oauth2/redirect";
 
     private final UserRepository userRepository;
     private final JwtService jwtService;
@@ -151,11 +154,11 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
         String redirectUri = request.getParameter("redirect_uri");
         if (redirectUri == null || redirectUri.isBlank()) {
-            redirectUri = defaultFrontendUrl;
+            redirectUri = defaultFrontendUrl + OAUTH_REDIRECT_PATH;
         }
 
         if (shouldRedirect(request)) {
-            sendRedirectWithCookies(response, redirectUri, tokens);
+            sendRedirectWithCookies(request, response, redirectUri, tokens);
         } else {
             writeJsonResponse(response, tokens);
         }
@@ -166,14 +169,15 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         return redirectFlag == null || Boolean.parseBoolean(redirectFlag);
     }
 
-    private void sendRedirectWithCookies(HttpServletResponse response, String redirectUri, LoginResponse tokens) throws IOException {
+    private void sendRedirectWithCookies(HttpServletRequest request, HttpServletResponse response, String redirectUri, LoginResponse tokens) throws IOException {
         // Set HttpOnly cookies for access and refresh tokens
-        String accessCookie = buildCookie("accessToken", tokens.getAccessToken(), (int) (tokens.getExpiresIn() / 1000));
-        String refreshCookie = buildCookie("refreshToken", tokens.getRefreshToken(), (int) (tokens.getRefreshExpiresIn() / 1000));
+        String accessCookie = buildCookie(request, "accessToken", tokens.getAccessToken(), (int) (tokens.getExpiresIn() / 1000));
+        String refreshCookie = buildCookie(request, "refreshToken", tokens.getRefreshToken(), (int) (tokens.getRefreshExpiresIn() / 1000));
         response.addHeader("Set-Cookie", accessCookie);
         response.addHeader("Set-Cookie", refreshCookie);
 
         String target = UriComponentsBuilder.fromUriString(redirectUri)
+                .queryParam("success", "true")
                 .build()
                 .toUriString();
 
@@ -181,9 +185,37 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         response.sendRedirect(target);
     }
 
-    private String buildCookie(String name, String value, int maxAgeSeconds) {
-        // Secure flag for HTTPS; SameSite=Lax to allow OAuth redirect
-        return name + "=" + value + "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=" + maxAgeSeconds;
+    private String buildCookie(HttpServletRequest request, String name, String value, int maxAgeSeconds) {
+        boolean secure = request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"));
+        String sameSite = resolveSameSite(request, secure);
+        return name + "=" + value + "; HttpOnly; SameSite=" + sameSite + "; Path=/; Max-Age=" + maxAgeSeconds + (secure ? "; Secure" : "");
+    }
+
+    private String resolveSameSite(HttpServletRequest request, boolean secure) {
+        if (secure && isCrossSiteRequest(request)) {
+            return "None";
+        }
+        return "Lax";
+    }
+
+    private boolean isCrossSiteRequest(HttpServletRequest request) {
+        String fetchSite = request.getHeader("Sec-Fetch-Site");
+        if ("cross-site".equalsIgnoreCase(fetchSite)) {
+            return true;
+        }
+
+        String origin = request.getHeader("Origin");
+        if (origin == null || origin.isBlank()) {
+            return false;
+        }
+
+        try {
+            URI uri = URI.create(origin);
+            String originHost = uri.getHost();
+            return originHost != null && !originHost.equalsIgnoreCase(request.getServerName());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void writeJsonResponse(HttpServletResponse response, LoginResponse tokens) throws IOException {

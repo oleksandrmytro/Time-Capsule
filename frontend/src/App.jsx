@@ -5,10 +5,14 @@ import AccountPanel from './components/AccountPanel'
 import { LoginForm, RegisterForm, VerifyForm, OAuthButtons } from './components/AuthForms'
 import { apiRequest, oauthLinks } from './services/api'
 
-const defaultApiBase = 'http://localhost:8080'
+const resolveApiBase = () =>
+  import.meta.env.VITE_API_ORIGIN ||
+  import.meta.env.VITE_API_BASE ||
+  import.meta.env.VITE_API_URL ||
+  window.location.origin
 
 function App() {
-  const [apiBase] = useState(() => import.meta.env.VITE_API_BASE || defaultApiBase)
+  const [apiBase] = useState(resolveApiBase)
   const [view, setView] = useState('home')
   const [form, setForm] = useState({
     username: '',
@@ -17,17 +21,88 @@ function App() {
     verificationCode: '',
   })
   const [profile, setProfile] = useState(null)
-  const [tokens, setTokens] = useState(() => {
-    const stored = localStorage.getItem('tokens')
-    return stored ? JSON.parse(stored) : null
-  })
+  const [tokens, setTokens] = useState(null)
   const [response, setResponse] = useState(null)
   const [error, setError] = useState(null)
 
+  const isValidProfile = (data) =>
+    Boolean(data && typeof data === 'object' && !Array.isArray(data) && data.id && data.email)
+
+  const establishSession = async () => {
+    const data = await apiRequest('/api/users/me', { method: 'GET' })
+    if (!isValidProfile(data)) {
+      throw { status: 401, message: 'Invalid profile response' }
+    }
+    setProfile(data)
+    setTokens({ session: 'cookie' })
+    setView('home')
+  }
+
+  const bootstrapSession = async () => {
+    const data = await apiRequest('/api/auth/session', { method: 'GET' })
+    if (data?.authenticated) {
+      await establishSession()
+      return
+    }
+
+    setTokens(null)
+    setProfile(null)
+  }
+
+  const establishSessionWithRetry = async (attempts = 3, delayMs = 250) => {
+    let lastError
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        await establishSession()
+        return
+      } catch (err) {
+        lastError = err
+        if (i < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs))
+        }
+      }
+    }
+    throw lastError
+  }
+
   useEffect(() => {
-    if (tokens) localStorage.setItem('tokens', JSON.stringify(tokens))
-    else localStorage.removeItem('tokens')
-  }, [tokens])
+    const isOauthRedirect = window.location.pathname === '/auth/oauth2/redirect'
+    if (isOauthRedirect) {
+      return
+    }
+
+    bootstrapSession().catch(() => {
+      setTokens(null)
+      setProfile(null)
+    })
+  }, [])
+
+  useEffect(() => {
+    const { pathname, search } = window.location
+    if (pathname !== '/auth/oauth2/redirect') return
+
+    const params = new URLSearchParams(search)
+    const error = params.get('error')
+    if (error) {
+      setError({ message: decodeURIComponent(error) })
+      setView('login')
+      window.history.replaceState({}, '', '/')
+      return
+    }
+
+    establishSessionWithRetry()
+        .then(() => {
+          setResponse({ action: 'oauthLogin', data: { provider: 'google/github', success: true } })
+          setError(null)
+        })
+        .catch(() => {
+          setError({ message: 'OAuth login completed but no active session found' })
+          setView('login')
+        })
+        .finally(() => {
+          window.history.replaceState({}, '', '/')
+        })
+  }, [])
 
   const disabledAuth = useMemo(
     () => !form.email || !form.password || (view === 'register' && !form.username),
@@ -64,16 +139,16 @@ function App() {
       const data = await apiRequest('/api/auth/login', {
         body: { email: form.email, password: form.password },
       })
-      setTokens(data)
+      await establishSession()
       return data
     })
 
   const verify = () =>
     run('verify', async () => {
-      const data = await apiRequest('/api/auth/verify', {
+      const data = await apiRequest('/api/auth/verify-and-login', {
         body: { email: form.email, verificationCode: form.verificationCode },
       })
-      setTokens(data)
+      await establishSession()
       setView('home')
       return data
     })
@@ -83,7 +158,7 @@ function App() {
 
   const logout = async () => {
     try {
-      await apiRequest('/api/auth/logout', { method: 'POST', token: tokens?.accessToken })
+      await apiRequest('/api/auth/logout', { method: 'POST'})
     } catch (e) {
       // ignore
     }
@@ -100,22 +175,32 @@ function App() {
   }
 
   const loadProfile = async () => {
-    if (!tokens?.accessToken) {
+    if (!tokens) {
       setProfile(null)
       return
     }
-    const data = await apiRequest('/api/users/me', { method: 'GET', token: tokens.accessToken })
-    setProfile(data)
+    try {
+      const data = await apiRequest('/api/users/me', { method: 'GET' })
+      if (!isValidProfile(data)) {
+        throw { status: 401, message: 'Invalid profile response' }
+      }
+      setProfile(data)
+    } catch (e) {
+      setTokens(null)
+      setProfile(null)
+      setView('login')
+      throw e
+    }
   }
 
   const updateProfile = async () => {
-    if (!tokens?.accessToken) return
+    if (!tokens) return
     const payload = {
       username: profile?.username,
       email: profile?.email,
       avatarUrl: profile?.avatarUrl,
     }
-    const data = await apiRequest('/api/users/me', { method: 'PATCH', body: payload, token: tokens.accessToken })
+    const data = await apiRequest('/api/users/me', { method: 'PATCH', body: payload })
     setProfile(data)
     setResponse({ action: 'updateProfile', data })
   }
@@ -153,15 +238,21 @@ function App() {
     </section>
   )
 
+  const isAuthenticated = Boolean(tokens && profile)
+
   return (
     <div className="page">
       <Header
         apiBase={apiBase}
-        tokens={tokens}
+        isAuthenticated={isAuthenticated}
         onGo={go}
-        onAccount={() => {
-          go('account')
-          loadProfile()
+        onAccount={async () => {
+          try {
+            await loadProfile()
+            go('account')
+          } catch (e) {
+            // handled in loadProfile
+          }
         }}
         onLogout={logout}
       />
@@ -205,13 +296,13 @@ function App() {
           onSave={updateProfile}
           onLogout={logout}
           onHome={() => go('home')}
-          tokens={tokens}
+          tokens={isAuthenticated ? tokens : null}
         />
       )}
 
       <section className="panel">
-        <h3>Tokens</h3>
-        {tokens ? <pre className="code">{JSON.stringify(tokens, null, 2)}</pre> : <p className="muted">No tokens stored</p>}
+        <h3>Session</h3>
+        {isAuthenticated ? <pre className="code">{JSON.stringify(tokens, null, 2)}</pre> : <p className="muted">No active session</p>}
       </section>
 
       <ResultPanel />
