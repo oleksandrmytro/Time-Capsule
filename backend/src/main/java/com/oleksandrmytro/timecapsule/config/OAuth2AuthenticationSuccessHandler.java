@@ -32,7 +32,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
     private static final Logger log = LoggerFactory.getLogger(OAuth2AuthenticationSuccessHandler.class);
 
-    @Value("${frontend.url:http://localhost:5173}")
+    @Value("${frontend.url:http://localhost}")
     private String defaultFrontendUrl;
 
     private final UserRepository userRepository;
