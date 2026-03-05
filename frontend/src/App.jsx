@@ -3,7 +3,9 @@ import './App.css'
 import Header from './components/Header'
 import AccountPanel from './components/AccountPanel'
 import { LoginForm, RegisterForm, VerifyForm, OAuthButtons } from './components/AuthForms'
-import { apiRequest, oauthLinks } from './services/api'
+import CreateCapsuleForm from './components/CreateCapsuleForm'
+import CapsuleList from './components/CapsuleList'
+import { apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, getCurrentUser, updateCurrentUser } from './services/api'
 
 const resolveApiBase = () =>
   import.meta.env.VITE_API_ORIGIN ||
@@ -24,12 +26,14 @@ function App() {
   const [tokens, setTokens] = useState(null)
   const [response, setResponse] = useState(null)
   const [error, setError] = useState(null)
+  const [capsules, setCapsules] = useState([])
+  const [selectedCapsule, setSelectedCapsule] = useState(null)
 
   const isValidProfile = (data) =>
     Boolean(data && typeof data === 'object' && !Array.isArray(data) && data.id && data.email)
 
   const establishSession = async () => {
-    const data = await apiRequest('/api/users/me', { method: 'GET' })
+    const data = await getCurrentUser()
     if (!isValidProfile(data)) {
       throw { status: 401, message: 'Invalid profile response' }
     }
@@ -180,7 +184,7 @@ function App() {
       return
     }
     try {
-      const data = await apiRequest('/api/users/me', { method: 'GET' })
+      const data = await getCurrentUser()
       if (!isValidProfile(data)) {
         throw { status: 401, message: 'Invalid profile response' }
       }
@@ -200,24 +204,76 @@ function App() {
       email: profile?.email,
       avatarUrl: profile?.avatarUrl,
     }
-    const data = await apiRequest('/api/users/me', { method: 'PATCH', body: payload })
+    const data = await updateCurrentUser(payload)
     setProfile(data)
     setResponse({ action: 'updateProfile', data })
+  }
+
+  const loadCapsules = async () => {
+    try {
+      setError(null)
+      const data = await listMyCapsules()
+      setCapsules(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError(err)
+      setCapsules([])
+    }
+  }
+
+  const handleCreateCapsule = async (capsuleData) => {
+    try {
+      setError(null)
+      const data = await createCapsule(capsuleData)
+      setResponse({ action: 'createCapsule', data })
+      await loadCapsules()
+      setView('capsules')
+    } catch (err) {
+      setError(err)
+    }
+  }
+
+  const viewCapsule = async (id) => {
+    try {
+      setError(null)
+      const data = await getCapsule(id)
+      setSelectedCapsule(data)
+      setView('viewCapsule')
+    } catch (err) {
+      setError(err)
+    }
   }
 
   const Home = () => (
     <section className="hero">
       <div>
-        <h2>Welcome</h2>
-        <p className="muted">Choose how you want to continue.</p>
+        <h2>Welcome{profile ? `, ${profile.username}` : ''}</h2>
+        <p className="muted">
+          {isAuthenticated
+            ? 'Create and manage your time capsules.'
+            : 'Choose how you want to continue.'}
+        </p>
         <div className="actions">
-          <button onClick={() => go('login')}>Go to Login</button>
-          <button onClick={() => go('register')} className="ghost">
-            Create account
-          </button>
+          {isAuthenticated ? (
+            <>
+              <button onClick={() => go('createCapsule')}>Create Capsule</button>
+              <button onClick={async () => {
+                await loadCapsules()
+                go('capsules')
+              }} className="ghost">
+                My Capsules
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => go('login')}>Go to Login</button>
+              <button onClick={() => go('register')} className="ghost">
+                Create account
+              </button>
+            </>
+          )}
         </div>
       </div>
-      <OAuthButtons links={oauthLinks()} />
+      {!isAuthenticated && <OAuthButtons links={oauthLinks()} />}
     </section>
   )
 
@@ -298,6 +354,71 @@ function App() {
           onHome={() => go('home')}
           tokens={isAuthenticated ? tokens : null}
         />
+      )}
+      {view === 'createCapsule' && (
+        <CreateCapsuleForm
+          onSubmit={handleCreateCapsule}
+          onCancel={() => go('home')}
+          error={error}
+        />
+      )}
+      {view === 'capsules' && (
+        <CapsuleList
+          capsules={capsules}
+          onSelect={viewCapsule}
+          onCreate={() => go('createCapsule')}
+          onBack={() => go('home')}
+        />
+      )}
+      {view === 'viewCapsule' && selectedCapsule && (
+        <section className="panel">
+          <h3>{selectedCapsule.title}</h3>
+          <div style={{ marginBottom: '15px' }}>
+            <p><strong>Status:</strong> {selectedCapsule.status}</p>
+            <p><strong>Visibility:</strong> {selectedCapsule.visibility}</p>
+            <p><strong>Unlocks:</strong> {new Date(selectedCapsule.unlockAt).toLocaleString()}</p>
+            {selectedCapsule.expiresAt && (
+              <p><strong>Expires:</strong> {new Date(selectedCapsule.expiresAt).toLocaleString()}</p>
+            )}
+          </div>
+          {selectedCapsule.body && (
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Message:</strong>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{selectedCapsule.body}</p>
+            </div>
+          )}
+          {selectedCapsule.tags && selectedCapsule.tags.length > 0 && (
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Tags:</strong>
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginTop: '5px' }}>
+                {selectedCapsule.tags.map((tag, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      padding: '2px 8px',
+                      backgroundColor: '#e9ecef',
+                      borderRadius: '3px',
+                      fontSize: '12px',
+                    }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {selectedCapsule.shareToken && (
+            <div style={{ marginBottom: '15px' }}>
+              <strong>Share Token:</strong> {selectedCapsule.shareToken}
+            </div>
+          )}
+          <div>
+            <button onClick={() => go('capsules')}>Back to List</button>
+            <button onClick={() => go('home')} className="ghost" style={{ marginLeft: '10px' }}>
+              Home
+            </button>
+          </div>
+        </section>
       )}
 
       <section className="panel">

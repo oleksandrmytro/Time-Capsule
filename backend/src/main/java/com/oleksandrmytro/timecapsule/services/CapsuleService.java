@@ -4,10 +4,12 @@ import com.oleksandrmytro.timecapsule.dto.CreateCapsuleRequest;
 import com.oleksandrmytro.timecapsule.models.Capsule;
 import com.oleksandrmytro.timecapsule.repositories.CapsuleRepository;
 import com.oleksandrmytro.timecapsule.responses.CapsuleResponse;
+import org.bson.types.ObjectId;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -20,19 +22,32 @@ public class CapsuleService {
     }
 
     public CapsuleResponse create(String ownerId, CreateCapsuleRequest request) {
+        // Validate business rules
+        validateCapsuleRequest(request);
+
         Capsule capsule = new Capsule();
-        capsule.setOwnerId(ownerId);
+        capsule.setOwnerId(new ObjectId(ownerId));
         capsule.setTitle(request.getTitle());
         capsule.setBody(request.getBody());
         capsule.setVisibility(request.getVisibility());
         capsule.setStatus(request.getStatus());
         capsule.setUnlockAt(request.getUnlockAt());
         capsule.setExpiresAt(request.getExpiresAt());
-        capsule.setAllowComments(request.getAllowComments());
-        capsule.setAllowReactions(request.getAllowReactions());
+        capsule.setAllowComments(request.getAllowComments() != null ? request.getAllowComments() : true);
+        capsule.setAllowReactions(request.getAllowReactions() != null ? request.getAllowReactions() : true);
         capsule.setTags(request.getTags());
         capsule.setMedia(mapMediaRequest(request.getMedia()));
-        capsule.setLocation(mapGeo(request.getLocation()));
+
+        // Only set location if provided
+        if (request.getLocation() != null) {
+            capsule.setLocation(mapGeo(request.getLocation()));
+        }
+
+        // Generate shareToken for shared capsules
+        if ("shared".equals(request.getVisibility())) {
+            capsule.setShareToken(generateShareToken());
+        }
+
         capsule.setCreatedAt(Instant.now());
         capsule.setUpdatedAt(Instant.now());
 
@@ -40,15 +55,40 @@ public class CapsuleService {
         return toResponse(saved);
     }
 
+    private void validateCapsuleRequest(CreateCapsuleRequest request) {
+        // Validate unlockAt is in the future for sealed capsules
+        if ("sealed".equals(request.getStatus())) {
+            if (request.getUnlockAt() == null) {
+                throw new IllegalArgumentException("Unlock date is required for sealed capsules");
+            }
+            if (request.getUnlockAt().isBefore(Instant.now())) {
+                throw new IllegalArgumentException("Unlock date must be in the future for sealed capsules");
+            }
+        }
+
+        // Validate expiresAt is after unlockAt if both provided
+        if (request.getExpiresAt() != null && request.getUnlockAt() != null) {
+            if (request.getExpiresAt().isBefore(request.getUnlockAt())) {
+                throw new IllegalArgumentException("Expiration date must be after unlock date");
+            }
+        }
+    }
+
+    private String generateShareToken() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
     public List<CapsuleResponse> listMine(String ownerId) {
-        return capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(ownerId)
+        ObjectId owner = new ObjectId(ownerId);
+        return capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner)
                 .stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
     }
 
     public CapsuleResponse getMine(String id, String ownerId) {
-        Capsule capsule = capsuleRepository.findByIdAndOwnerIdAndDeletedAtIsNull(id, ownerId)
+        ObjectId owner = new ObjectId(ownerId);
+        Capsule capsule = capsuleRepository.findByIdAndOwnerIdAndDeletedAtIsNull(id, owner)
                 .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
         return toResponse(capsule);
     }
@@ -56,7 +96,7 @@ public class CapsuleService {
     private CapsuleResponse toResponse(Capsule capsule) {
         CapsuleResponse resp = new CapsuleResponse();
         resp.setId(capsule.getId());
-        resp.setOwnerId(capsule.getOwnerId());
+        resp.setOwnerId(capsule.getOwnerId() != null ? capsule.getOwnerId().toHexString() : null);
         resp.setTitle(capsule.getTitle());
         resp.setBody(capsule.getBody());
         resp.setVisibility(capsule.getVisibility());

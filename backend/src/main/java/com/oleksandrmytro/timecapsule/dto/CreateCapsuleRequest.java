@@ -2,24 +2,42 @@ package com.oleksandrmytro.timecapsule.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Future;
 import java.time.Instant;
 import java.util.List;
 
 public class CreateCapsuleRequest {
-    @NotBlank
+    @NotBlank(message = "Title is required")
+    @Size(min = 1, max = 200, message = "Title must be between 1 and 200 characters")
     private String title;
+
+    @Size(max = 5000, message = "Body must not exceed 5000 characters")
     private String body;
+
     private List<MediaDto> media;
-    @NotBlank
+
+    @NotBlank(message = "Visibility is required")
+    @Pattern(regexp = "private|public|shared", message = "Visibility must be one of: private, public, shared")
     private String visibility; // private | public | shared
-    @NotBlank
+
+    @NotBlank(message = "Status is required")
+    @Pattern(regexp = "draft|sealed|opened", message = "Status must be one of: draft, sealed, opened")
     private String status; // draft | sealed | opened
-    @NotNull
+
+    @NotNull(message = "Unlock date is required")
     private Instant unlockAt;
+
     private Instant expiresAt;
+
+    // Location is optional for now
     private GeoPointDto location;
+
     private Boolean allowComments;
     private Boolean allowReactions;
+
+    @Size(max = 20, message = "Maximum 20 tags allowed")
     private List<String> tags;
 
     public String getTitle() { return title; }

@@ -1,5 +1,6 @@
 package com.oleksandrmytro.timecapsule.models;
 
+import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
@@ -14,7 +15,7 @@ public class Capsule {
     private String id;
 
     @Field("ownerId")
-    private String ownerId;
+    private ObjectId ownerId;
 
     @Field("title")
     private String title;
@@ -69,8 +70,8 @@ public class Capsule {
     // getters and setters
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
-    public String getOwnerId() { return ownerId; }
-    public void setOwnerId(String ownerId) { this.ownerId = ownerId; }
+    public ObjectId getOwnerId() { return ownerId; }
+    public void setOwnerId(ObjectId ownerId) { this.ownerId = ownerId; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public String getBody() { return body; }
@@ -127,4 +128,3 @@ public class Capsule {
         public void setCoordinates(List<Double> coordinates) { this.coordinates = coordinates; }
     }
 }
-

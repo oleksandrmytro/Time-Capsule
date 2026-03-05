@@ -56,3 +56,31 @@ export function oauthLinks() {
   ]
 }
 
+// User API methods
+export async function getCurrentUser() {
+  return apiRequest('/api/users/me', { method: 'GET' })
+}
+
+export async function updateCurrentUser(payload) {
+  return apiRequest('/api/users/me', { method: 'PATCH', body: payload })
+}
+
+// Capsule API methods
+export async function createCapsule(capsuleData) {
+  return apiRequest('/api/capsules', {
+    method: 'POST',
+    body: capsuleData,
+  })
+}
+
+export async function listMyCapsules() {
+  return apiRequest('/api/capsules', {
+    method: 'GET',
+  })
+}
+
+export async function getCapsule(id) {
+  return apiRequest(`/api/capsules/${id}`, {
+    method: 'GET',
+  })
+}
