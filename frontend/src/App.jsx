@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import './App.css'
 import Header from './components/Header'
 import { Footer } from './components/footer'
@@ -13,6 +13,7 @@ import { CapsulesList } from './components/capsules/capsules-list'
 import { CreateCapsuleForm } from './components/capsules/create-capsule-form'
 import { CapsuleDetail } from './components/capsules/capsule-detail'
 import { apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser } from './services/api'
+import { connectCapsuleStream, disconnectCapsuleStream } from './services/ws'
 
 function App() {
   const [view, setView] = useState('home')
@@ -99,6 +100,7 @@ function App() {
 
   const logout = async () => {
     try { await apiRequest('/api/auth/logout', { method: 'POST' }) } catch {}
+    disconnectCapsuleStream()
     setTokens(null); setProfile(null); setView('home')
   }
 
@@ -119,12 +121,12 @@ function App() {
   }
 
   // --- Capsules ---
-  const loadCapsules = async () => {
+  const loadCapsules = useCallback(async () => {
     setCapsulesLoading(true); setError(null)
     try { const data = await listMyCapsules(); setCapsules(Array.isArray(data) ? data : []) }
     catch (err) { setError(err); setCapsules([]) }
     finally { setCapsulesLoading(false) }
-  }
+  }, [])
 
   const handleCreateCapsule = async (capsuleData) => {
     setError(null)
@@ -144,10 +146,23 @@ function App() {
     try {
       const data = await unlockCapsule(id)
       setSelectedCapsule(data)
-      await loadCapsules() // Refresh the list
+      await loadCapsules()
     }
     catch (err) { setError(err) }
   }
+
+  // --- WebSocket: connect after login, disconnect on logout ---
+  useEffect(() => {
+    if (!isAuthenticated) return
+    connectCapsuleStream({
+      onEvent: () => {
+        // Server pushed a capsule status change — refresh list + detail
+        loadCapsules()
+      },
+      onError: (msg) => console.warn('WS error:', msg)
+    })
+    return () => disconnectCapsuleStream()
+  }, [isAuthenticated, loadCapsules])
 
   // --- Render ---
   return (

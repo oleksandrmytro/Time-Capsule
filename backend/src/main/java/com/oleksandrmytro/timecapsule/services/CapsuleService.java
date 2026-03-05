@@ -1,10 +1,17 @@
 package com.oleksandrmytro.timecapsule.services;
 
 import com.oleksandrmytro.timecapsule.dto.CreateCapsuleRequest;
+import com.oleksandrmytro.timecapsule.events.CapsuleStatusEvent;
 import com.oleksandrmytro.timecapsule.models.Capsule;
 import com.oleksandrmytro.timecapsule.repositories.CapsuleRepository;
+import com.oleksandrmytro.timecapsule.repositories.UserRepository;
 import com.oleksandrmytro.timecapsule.responses.CapsuleResponse;
 import org.bson.types.ObjectId;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -16,9 +23,21 @@ import java.util.stream.Collectors;
 public class CapsuleService {
 
     private final CapsuleRepository capsuleRepository;
+    private final MongoTemplate mongoTemplate;
+    private final CapsuleNotificationService capsuleNotificationService;
+    private final UserRepository userRepository;
 
-    public CapsuleService(CapsuleRepository capsuleRepository) {
+    public CapsuleService(CapsuleRepository capsuleRepository, MongoTemplate mongoTemplate, CapsuleNotificationService capsuleNotificationService, UserRepository userRepository) {
         this.capsuleRepository = capsuleRepository;
+        this.mongoTemplate = mongoTemplate;
+        this.capsuleNotificationService = capsuleNotificationService;
+        this.userRepository = userRepository;
+    }
+
+    private void notifyOwner(String ownerId, Capsule capsule) {
+        userRepository.findById(ownerId).ifPresent(user ->
+                capsuleNotificationService.sendStatus(user.getEmail(), toEvent(capsule))
+        );
     }
 
     public CapsuleResponse create(String ownerId, CreateCapsuleRequest request) {
@@ -80,6 +99,25 @@ public class CapsuleService {
 
     public List<CapsuleResponse> listMine(String ownerId) {
         ObjectId owner = new ObjectId(ownerId);
+        // Find ready-to-open capsules to notify later
+        Query readyQuery = new Query(
+                Criteria.where("ownerId").is(owner)
+                        .and("status").is("sealed")
+                        .and("deletedAt").is(null)
+                        .and("unlockAt").lte(Instant.now())
+        );
+        var ready = mongoTemplate.find(readyQuery, Capsule.class);
+
+        // Auto-unlock all ready capsules for this owner (shard-key targeted)
+        Update unlockUpdate = new Update()
+                .set("status", "opened")
+                .set("openedAt", Instant.now())
+                .set("updatedAt", Instant.now());
+        mongoTemplate.updateMulti(readyQuery, unlockUpdate, Capsule.class);
+
+        // Push notifications for those that were just unlocked
+        ready.forEach(c -> notifyOwner(ownerId, toUnlocked(c)));
+
         return capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner)
                 .stream()
                 .map(this::toResponse)
@@ -88,9 +126,81 @@ public class CapsuleService {
 
     public CapsuleResponse getMine(String id, String ownerId) {
         ObjectId owner = new ObjectId(ownerId);
+
+        // Try to auto-unlock with shard-key targeted findAndModify
+        Query unlockQuery = new Query(
+                Criteria.where("_id").is(id)
+                        .and("ownerId").is(owner)
+                        .and("status").is("sealed")
+                        .and("deletedAt").is(null)
+                        .and("unlockAt").lte(Instant.now())
+        );
+        Update unlockUpdate = new Update()
+                .set("status", "opened")
+                .set("openedAt", Instant.now())
+                .set("updatedAt", Instant.now());
+        Capsule unlocked = mongoTemplate.findAndModify(
+                unlockQuery,
+                unlockUpdate,
+                FindAndModifyOptions.options().returnNew(true),
+                Capsule.class
+        );
+
+        if (unlocked != null) {
+            notifyOwner(ownerId, unlocked);
+            return toResponse(unlocked);
+        }
+
         Capsule capsule = capsuleRepository.findByIdAndOwnerIdAndDeletedAtIsNull(id, owner)
                 .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
+
         return toResponse(capsule);
+    }
+
+    public CapsuleResponse unlockCapsule(String id, String ownerId) {
+        ObjectId owner = new ObjectId(ownerId);
+
+        Query query = new Query(
+                Criteria.where("_id").is(id)
+                        .and("ownerId").is(owner)
+                        .and("deletedAt").is(null)
+                        .and("status").is("sealed")
+                        .and("unlockAt").lte(Instant.now())
+        );
+
+        Update update = new Update()
+                .set("status", "opened")
+                .set("openedAt", Instant.now())
+                .set("updatedAt", Instant.now());
+
+        Capsule updated = mongoTemplate.findAndModify(
+                query,
+                update,
+                FindAndModifyOptions.options().returnNew(true),
+                Capsule.class
+        );
+
+        if (updated == null) {
+            throw new IllegalArgumentException("Capsule cannot be unlocked yet or not found");
+        }
+
+        capsuleNotificationService.sendStatus(
+                userRepository.findById(ownerId).map(u -> u.getEmail()).orElse(ownerId),
+                toEvent(updated)
+        );
+        return toResponse(updated);
+    }
+
+    private CapsuleStatusEvent toEvent(Capsule capsule) {
+        boolean isLocked = "sealed".equals(capsule.getStatus()) && capsule.getUnlockAt() != null && Instant.now().isBefore(capsule.getUnlockAt());
+        return new CapsuleStatusEvent(capsule.getId(), capsule.getStatus(), isLocked, capsule.getUnlockAt(), capsule.getOpenedAt(), capsule.getTags());
+    }
+
+    private Capsule toUnlocked(Capsule capsule) {
+        capsule.setStatus("opened");
+        capsule.setOpenedAt(Instant.now());
+        capsule.setUpdatedAt(Instant.now());
+        return capsule;
     }
 
     private CapsuleResponse toResponse(Capsule capsule) {
@@ -98,7 +208,20 @@ public class CapsuleService {
         resp.setId(capsule.getId());
         resp.setOwnerId(capsule.getOwnerId() != null ? capsule.getOwnerId().toHexString() : null);
         resp.setTitle(capsule.getTitle());
-        resp.setBody(capsule.getBody());
+
+        boolean isLocked = "sealed".equals(capsule.getStatus()) &&
+                capsule.getUnlockAt() != null &&
+                Instant.now().isBefore(capsule.getUnlockAt());
+
+        resp.setIsLocked(isLocked);
+        if (isLocked) {
+            resp.setBody(null);
+            resp.setMedia(null);
+        } else {
+            resp.setBody(capsule.getBody());
+            resp.setMedia(mapMediaResponse(capsule.getMedia()));
+        }
+
         resp.setVisibility(capsule.getVisibility());
         resp.setStatus(capsule.getStatus());
         resp.setUnlockAt(capsule.getUnlockAt());
@@ -109,7 +232,6 @@ public class CapsuleService {
         resp.setShareToken(capsule.getShareToken());
         resp.setTags(capsule.getTags());
         resp.setLocation(mapGeo(capsule.getLocation()));
-        resp.setMedia(mapMediaResponse(capsule.getMedia()));
         resp.setCreatedAt(capsule.getCreatedAt());
         resp.setUpdatedAt(capsule.getUpdatedAt());
         return resp;

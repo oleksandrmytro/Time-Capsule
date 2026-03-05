@@ -39,6 +39,12 @@ public class CapsuleController {
         return ResponseEntity.ok(capsuleService.getMine(id, ownerId));
     }
 
+    @PostMapping("/{id}/unlock")
+    public ResponseEntity<CapsuleResponse> unlock(@PathVariable String id, Authentication auth) {
+        String ownerId = currentUserId(auth);
+        return ResponseEntity.ok(capsuleService.unlockCapsule(id, ownerId));
+    }
+
     private String currentUserId(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof UserDetails ud)) {
             throw new IllegalArgumentException("Unauthorized");

@@ -11,6 +11,7 @@ public class CapsuleResponse {
     private List<Media> media;
     private String visibility;
     private String status;
+    private Boolean isLocked; // true if sealed and unlock time hasn't arrived
     private Instant unlockAt;
     private Instant openedAt;
     private Instant expiresAt;
@@ -36,6 +37,8 @@ public class CapsuleResponse {
     public void setVisibility(String visibility) { this.visibility = visibility; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public Boolean getIsLocked() { return isLocked; }
+    public void setIsLocked(Boolean isLocked) { this.isLocked = isLocked; }
     public Instant getUnlockAt() { return unlockAt; }
     public void setUnlockAt(Instant unlockAt) { this.unlockAt = unlockAt; }
     public Instant getOpenedAt() { return openedAt; }

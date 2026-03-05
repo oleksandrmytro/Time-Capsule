@@ -84,3 +84,10 @@ export async function getCapsule(id) {
     method: 'GET',
   })
 }
+
+export async function unlockCapsule(id) {
+  return apiRequest(`/api/capsules/${id}/unlock`, {
+    method: 'POST',
+  })
+}
+

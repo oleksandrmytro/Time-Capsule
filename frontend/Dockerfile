@@ -2,10 +2,13 @@
 FROM oven/bun:1-alpine AS dev
 WORKDIR /app
 
-COPY bun.lock package.json ./
+COPY package.json ./
+COPY bun.lock* ./
 # Force clean install to avoid stale esbuild native binaries
 RUN rm -rf node_modules /.bun/install/cache && \
-    bun install --force --no-cache
+    bun install --force --no-cache && \
+    rm -rf node_modules/esbuild node_modules/@esbuild && \
+    bun add esbuild@latest --force --no-cache
 COPY . .
 
 ENV HOST=0.0.0.0 \
@@ -17,7 +20,8 @@ CMD ["bun","run","dev","--","--host","0.0.0.0"]
 ################ BUILD‑stage (production) #################
 FROM oven/bun:1-alpine AS build
 WORKDIR /app
-COPY bun.lock package.json ./
+COPY package.json ./
+COPY bun.lock* ./
 RUN rm -rf node_modules /.bun/install/cache && \
     bun install --force --no-cache --production
 COPY . .
