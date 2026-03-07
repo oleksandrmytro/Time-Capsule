@@ -4,7 +4,13 @@ import com.oleksandrmytro.timecapsule.dto.CreateCapsuleRequest;
 import com.oleksandrmytro.timecapsule.dto.ShareCapsuleRequest;
 import com.oleksandrmytro.timecapsule.events.CapsuleStatusEvent;
 import com.oleksandrmytro.timecapsule.models.Capsule;
-import com.oleksandrmytro.timecapsule.models.Share;
+import com.oleksandrmytro.timecapsule.models.enums.CapsuleStatus;
+import com.oleksandrmytro.timecapsule.models.enums.CapsuleVisibility;
+import com.oleksandrmytro.timecapsule.models.enums.ChatMessageStatus;
+import com.oleksandrmytro.timecapsule.models.enums.ChatMessageType;
+import com.oleksandrmytro.timecapsule.models.enums.ShareRole;
+import com.oleksandrmytro.timecapsule.models.enums.ShareStatus;
+import com.oleksandrmytro.timecapsule.models.enums.ShareVia;
 import com.oleksandrmytro.timecapsule.repositories.CapsuleRepository;
 import com.oleksandrmytro.timecapsule.repositories.FollowRepository;
 import com.oleksandrmytro.timecapsule.repositories.ShareRepository;
@@ -59,11 +65,13 @@ public class CapsuleService {
         // Validate business rules
         validateCapsuleRequest(request);
 
+        CapsuleVisibility visibility = CapsuleVisibility.fromValue(request.getVisibility());
+
         Capsule capsule = new Capsule();
         capsule.setOwnerId(new ObjectId(ownerId));
         capsule.setTitle(request.getTitle());
         capsule.setBody(request.getBody());
-        capsule.setVisibility(request.getVisibility());
+        capsule.setVisibility(visibility);
         capsule.setStatus(request.getStatus());
         capsule.setUnlockAt(request.getUnlockAt());
         capsule.setExpiresAt(request.getExpiresAt());
@@ -78,7 +86,7 @@ public class CapsuleService {
         }
 
         // Generate shareToken for shared capsules
-        if ("shared".equals(request.getVisibility())) {
+        if (CapsuleVisibility.SHARED.equals(visibility)) {
             capsule.setShareToken(generateShareToken());
         }
 
@@ -90,8 +98,8 @@ public class CapsuleService {
     }
 
     private void validateCapsuleRequest(CreateCapsuleRequest request) {
-        // Validate unlockAt is in the future for sealed capsules
-        if ("sealed".equals(request.getStatus())) {
+        CapsuleStatus status = CapsuleStatus.fromValue(request.getStatus());
+        if (CapsuleStatus.SEALED.equals(status)) {
             if (request.getUnlockAt() == null) {
                 throw new IllegalArgumentException("Unlock date is required for sealed capsules");
             }
@@ -100,7 +108,6 @@ public class CapsuleService {
             }
         }
 
-        // Validate expiresAt is after unlockAt if both provided
         if (request.getExpiresAt() != null && request.getUnlockAt() != null) {
             if (request.getExpiresAt().isBefore(request.getUnlockAt())) {
                 throw new IllegalArgumentException("Expiration date must be after unlock date");
@@ -117,7 +124,7 @@ public class CapsuleService {
         // Find ready-to-open capsules to notify later
         Query readyQuery = new Query(
                 Criteria.where("ownerId").is(owner)
-                        .and("status").is("sealed")
+                        .and("status").is(CapsuleStatus.SEALED.getValue())
                         .and("deletedAt").is(null)
                         .and("unlockAt").lte(Instant.now())
         );
@@ -125,7 +132,7 @@ public class CapsuleService {
 
         // Auto-unlock all ready capsules for this owner (shard-key targeted)
         Update unlockUpdate = new Update()
-                .set("status", "opened")
+                .set("status", CapsuleStatus.OPENED.getValue())
                 .set("openedAt", Instant.now())
                 .set("updatedAt", Instant.now());
         mongoTemplate.updateMulti(readyQuery, unlockUpdate, Capsule.class);
@@ -146,12 +153,12 @@ public class CapsuleService {
         Query unlockQuery = new Query(
                 Criteria.where("_id").is(id)
                         .and("ownerId").is(owner)
-                        .and("status").is("sealed")
+                        .and("status").is(CapsuleStatus.SEALED.getValue())
                         .and("deletedAt").is(null)
                         .and("unlockAt").lte(Instant.now())
         );
         Update unlockUpdate = new Update()
-                .set("status", "opened")
+                .set("status", CapsuleStatus.OPENED.getValue())
                 .set("openedAt", Instant.now())
                 .set("updatedAt", Instant.now());
         Capsule unlocked = mongoTemplate.findAndModify(
@@ -194,12 +201,12 @@ public class CapsuleService {
                 Criteria.where("_id").is(id)
                         .and("ownerId").is(owner)
                         .and("deletedAt").is(null)
-                        .and("status").is("sealed")
+                        .and("status").is(CapsuleStatus.SEALED.getValue())
                         .and("unlockAt").lte(Instant.now())
         );
 
         Update update = new Update()
-                .set("status", "opened")
+                .set("status", CapsuleStatus.OPENED.getValue())
                 .set("openedAt", Instant.now())
                 .set("updatedAt", Instant.now());
 
@@ -237,7 +244,7 @@ public class CapsuleService {
             mongoTemplate.updateFirst(query, update, Capsule.class);
         }
 
-        if (CollectionUtils.isEmpty(userIds)) return;
+        if (CollectionUtils.isEmpty(userIds)) return;           // No users to share with, exit early
 
         String senderName = userRepository.findById(ownerId)
                 .map(u -> u.getUsernameField() != null ? u.getUsernameField() : u.getEmail())
@@ -251,9 +258,9 @@ public class CapsuleService {
 
             // Create share record in shares collection
             Share share = new Share(capsuleId, uid, ownerId);
-            share.setRole("viewer");
-            share.setStatus("pending");
-            share.setVia("invite");
+            share.setRole(ShareRole.VIEWER);
+            share.setStatus(ShareStatus.PENDING);
+            share.setVia(ShareVia.INVITE);
             share.setShareToken(shareToken);
             shareRepository.save(share);
 
@@ -263,40 +270,50 @@ public class CapsuleService {
             // Send chat message via WebSocket to grantee
             Map<String, Object> chatMsg = Map.of(
                     "id", UUID.randomUUID().toString(),
-                    "type", "capsule_share",
+                    "type", ChatMessageType.CAPSULE_SHARE.getValue(),
                     "text", shareText,
                     "capsuleId", capsuleId,
                     "capsuleTitle", capsule.getTitle() != null ? capsule.getTitle() : "",
                     "fromUserId", ownerId,
                     "fromMe", false,
                     "timestamp", Instant.now().toString(),
-                    "status", "sent"
+                    "status", ChatMessageStatus.SENT.getValue()
             );
             messagingTemplate.convertAndSendToUser(uid, "/queue/chat", chatMsg);
         }
     }
 
+    /**
+     * Преобразует объект Capsule в событие CapsuleStatusEvent для отправки через WebSocket.
+     * @param capsule
+     * @return
+     */
     private CapsuleStatusEvent toEvent(Capsule capsule) {
-        boolean isLocked = "sealed".equals(capsule.getStatus()) && capsule.getUnlockAt() != null && Instant.now().isBefore(capsule.getUnlockAt());
-        return new CapsuleStatusEvent(capsule.getId(), capsule.getStatus(), isLocked, capsule.getUnlockAt(), capsule.getOpenedAt(), capsule.getTags());
+        boolean isLocked = isLocked(capsule.getStatus(), capsule.getUnlockAt());
+        CapsuleStatus status = CapsuleStatus.fromValue(capsule.getStatus());
+        String statusValue = status != null ? status.getValue() : capsule.getStatus();
+        return new CapsuleStatusEvent(capsule.getId(), statusValue, isLocked, capsule.getUnlockAt(), capsule.getOpenedAt(), capsule.getTags());
     }
 
     private Capsule toUnlocked(Capsule capsule) {
-        capsule.setStatus("opened");
+        capsule.setStatus(CapsuleStatus.OPENED.getValue());
         capsule.setOpenedAt(Instant.now());
         capsule.setUpdatedAt(Instant.now());
         return capsule;
     }
 
+    /**
+     * Преобразует объект Capsule в CapsuleResponse для API-відповіді, враховуючи статус блокування.
+     * @param capsule
+     * @return
+     */
     private CapsuleResponse toResponse(Capsule capsule) {
         CapsuleResponse resp = new CapsuleResponse();
         resp.setId(capsule.getId());
         resp.setOwnerId(capsule.getOwnerId() != null ? capsule.getOwnerId().toHexString() : null);
         resp.setTitle(capsule.getTitle());
 
-        boolean isLocked = "sealed".equals(capsule.getStatus()) &&
-                capsule.getUnlockAt() != null &&
-                Instant.now().isBefore(capsule.getUnlockAt());
+        boolean isLocked = isLocked(capsule.getStatus(), capsule.getUnlockAt());
 
         resp.setIsLocked(isLocked);
         if (isLocked) {
@@ -308,7 +325,8 @@ public class CapsuleService {
         }
 
         resp.setVisibility(capsule.getVisibility());
-        resp.setStatus(capsule.getStatus());
+        CapsuleStatus status = CapsuleStatus.fromValue(capsule.getStatus());
+        resp.setStatus(status != null ? status.getValue() : capsule.getStatus());
         resp.setUnlockAt(capsule.getUnlockAt());
         resp.setOpenedAt(capsule.getOpenedAt());
         resp.setExpiresAt(capsule.getExpiresAt());
@@ -358,5 +376,10 @@ public class CapsuleService {
         g.setType(geo.getType());
         g.setCoordinates(geo.getCoordinates());
         return g;
+    }
+
+    private boolean isLocked(String status, Instant unlockAt) {
+        CapsuleStatus st = CapsuleStatus.fromValue(status);
+        return CapsuleStatus.SEALED.equals(st) && unlockAt != null && Instant.now().isBefore(unlockAt);
     }
 }

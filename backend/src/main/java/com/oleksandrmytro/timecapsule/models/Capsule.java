@@ -1,5 +1,7 @@
 package com.oleksandrmytro.timecapsule.models;
 
+import com.oleksandrmytro.timecapsule.models.enums.CapsuleStatus;
+import com.oleksandrmytro.timecapsule.models.enums.CapsuleVisibility;
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -80,8 +82,12 @@ public class Capsule {
     public void setMedia(List<Media> media) { this.media = media; }
     public String getVisibility() { return visibility; }
     public void setVisibility(String visibility) { this.visibility = visibility; }
+    public void setVisibility(CapsuleVisibility visibility) { this.visibility = visibility != null ? visibility.getValue() : null; }
+    public CapsuleVisibility getVisibilityEnum() { return CapsuleVisibility.fromValue(visibility); }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public void setStatus(CapsuleStatus status) { this.status = status != null ? status.getValue() : null; }
+    public CapsuleStatus getStatusEnum() { return CapsuleStatus.fromValue(status); }
     public Instant getUnlockAt() { return unlockAt; }
     public void setUnlockAt(Instant unlockAt) { this.unlockAt = unlockAt; }
     public Instant getOpenedAt() { return openedAt; }

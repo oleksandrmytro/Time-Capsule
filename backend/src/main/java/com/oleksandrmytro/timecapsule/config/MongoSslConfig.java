@@ -18,7 +18,7 @@ import java.security.cert.X509Certificate;
 @Configuration
 @Profile("mongo-ssl") // use only when TLS Mongo is required
 public class MongoSslConfig extends AbstractMongoClientConfiguration {
-
+    // Value - використовується для отримання URI MongoDB з application.properties або application.yml
     @Value("${spring.data.mongodb.uri}")
     private String mongoUri;
 
@@ -31,9 +31,11 @@ public class MongoSslConfig extends AbstractMongoClientConfiguration {
     }
 
     @Override
+    // Bean для створення MongoClient з налаштуваннями SSL, які ігнорують сертифікати. Це потрібно для підключення до MongoDB з TLS, якщо сертифікат не є довіреним.
     @Bean
     public MongoClient mongoClient() {
         try {
+            // Створюємо TrustManager, який довіряє всім сертифікатам
             TrustManager[] trustAllCerts = new TrustManager[]{
                 new X509TrustManager() {
                     public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
@@ -46,13 +48,13 @@ public class MongoSslConfig extends AbstractMongoClientConfiguration {
             sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
 
             ConnectionString connectionString = new ConnectionString(mongoUri);
-
+            // Налаштовуємо MongoClientSettings для використання SSL з нашим SSLContext
             MongoClientSettings settings = MongoClientSettings.builder()
-                    .applyConnectionString(connectionString)
+                    .applyConnectionString(connectionString)    // застосовуємо URI з application.properties
                     .applyToSslSettings(builder -> builder
-                            .enabled(true)
-                            .invalidHostNameAllowed(true)
-                            .context(sslContext))
+                            .enabled(true)          // вмикаємо SSL
+                            .invalidHostNameAllowed(true)           // дозволяємо недійсні імена хостів (для тестування)
+                            .context(sslContext))       // використовуємо наш SSLContext, який довіряє всім сертифікатам
                     .build();
 
             return MongoClients.create(settings);

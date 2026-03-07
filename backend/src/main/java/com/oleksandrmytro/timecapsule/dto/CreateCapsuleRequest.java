@@ -1,5 +1,7 @@
 package com.oleksandrmytro.timecapsule.dto;
 
+import com.oleksandrmytro.timecapsule.models.enums.CapsuleStatus;
+import com.oleksandrmytro.timecapsule.models.enums.CapsuleVisibility;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -19,11 +21,11 @@ public class CreateCapsuleRequest {
     private List<MediaDto> media;
 
     @NotBlank(message = "Visibility is required")
-    @Pattern(regexp = "private|public|shared", message = "Visibility must be one of: private, public, shared")
+    @Pattern(regexp = CapsuleVisibility.REGEX, message = "Visibility must be one of: private, public, shared")
     private String visibility; // private | public | shared
 
     @NotBlank(message = "Status is required")
-    @Pattern(regexp = "draft|sealed|opened", message = "Status must be one of: draft, sealed, opened")
+    @Pattern(regexp = CapsuleStatus.REGEX, message = "Status must be one of: draft, sealed, opened")
     private String status; // draft | sealed | opened
 
     @NotNull(message = "Unlock date is required")
@@ -86,4 +88,3 @@ public class CreateCapsuleRequest {
         public void setCoordinates(List<Double> coordinates) { this.coordinates = coordinates; }
     }
 }
-

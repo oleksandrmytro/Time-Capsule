@@ -1,6 +1,8 @@
 package com.oleksandrmytro.timecapsule.services;
 
 import com.oleksandrmytro.timecapsule.models.ChatMessage;
+import com.oleksandrmytro.timecapsule.models.enums.ChatMessageStatus;
+import com.oleksandrmytro.timecapsule.models.enums.ChatMessageType;
 import com.oleksandrmytro.timecapsule.repositories.ChatMessageRepository;
 import org.bson.types.ObjectId;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -13,7 +15,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Chat service — purely WebSocket-based, no database persistence.
@@ -38,20 +39,20 @@ public class ChatService {
         if (!StringUtils.hasText(text)) throw new IllegalArgumentException("Message text is empty");
         userService.getById(peerId); // validate peer exists
         ChatMessage msg = new ChatMessage(currentUserId, peerId, text.trim());
-        msg.setType("text");
+        msg.setType(ChatMessageType.TEXT);
         msg.setCreatedAt(Instant.now());
-        msg.setStatus("sent");
+        msg.setStatus(ChatMessageStatus.SENT);
         ChatMessage saved = chatMessageRepository.save(msg);
         return deliver(saved, currentUserId, peerId);
     }
 
     public Map<String, Object> saveShareMessage(String ownerId, String granteeId, String capsuleId, String capsuleTitle, String text) {
         ChatMessage msg = new ChatMessage(ownerId, granteeId, text);
-        msg.setType("capsule_share");
+        msg.setType(ChatMessageType.CAPSULE_SHARE);
         msg.setCapsuleId(new ObjectId(capsuleId));
         msg.setCapsuleTitle(capsuleTitle);
         msg.setCreatedAt(Instant.now());
-        msg.setStatus("sent");
+        msg.setStatus(ChatMessageStatus.SENT);
         ChatMessage saved = chatMessageRepository.save(msg);
         return deliver(saved, ownerId, granteeId);
     }

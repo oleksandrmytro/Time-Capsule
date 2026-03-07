@@ -2,6 +2,12 @@ package com.oleksandrmytro.timecapsule.events;
 
 import java.time.Instant;
 import java.util.List;
+/**
+ * CapsuleStatusEvent — це POJO-клас(Простий клас який використовується для зберігання та передачі даних, без додаткової логіки) ,
+ * який представляє структуру даних для подій статусу капсули, що надсилаються через WebSocket.
+ * Він містить поля id, status, isLocked, unlockAt, openedAt та tags, які описують поточний стан капсули.
+ * Цей клас використовується для серіалізації та десеріалізації JSON-повідомлень, що передаються між сервером та клієнтом.
+ */
 
 public class CapsuleStatusEvent {
     private String id;

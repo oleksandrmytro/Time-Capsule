@@ -6,7 +6,9 @@ import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBr
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
+// WebSocket configuration for STOMP messaging with JWT authentication.
 @Configuration
+// @EnableWebSocketMessageBroker — включає підтримку WebSocket з STOMP-протоколом для обміну повідомленнями між клієнтом і сервером.
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 

@@ -1,5 +1,7 @@
 package com.oleksandrmytro.timecapsule.models;
 
+import com.oleksandrmytro.timecapsule.models.enums.ChatMessageStatus;
+import com.oleksandrmytro.timecapsule.models.enums.ChatMessageType;
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
@@ -25,7 +27,7 @@ public class ChatMessage {
     private String text;
 
     @Field("type")
-    private String type = "text"; // text | capsule_share
+    private String type = ChatMessageType.TEXT.getValue(); // text | capsule_share
 
     @Field("capsuleId")
     private ObjectId capsuleId;
@@ -38,7 +40,7 @@ public class ChatMessage {
     private Instant createdAt = Instant.now();
 
     @Field("status")
-    private String status = "sent";
+    private String status = ChatMessageStatus.SENT.getValue();
 
     @Field("deletedAt")
     private Instant deletedAt;
@@ -62,6 +64,7 @@ public class ChatMessage {
     public void setText(String text) { this.text = text; }
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
+    public void setType(ChatMessageType type) { this.type = type != null ? type.getValue() : null; }
     public ObjectId getCapsuleId() { return capsuleId; }
     public void setCapsuleId(ObjectId capsuleId) { this.capsuleId = capsuleId; }
     public String getCapsuleTitle() { return capsuleTitle; }
@@ -70,7 +73,7 @@ public class ChatMessage {
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public void setStatus(ChatMessageStatus status) { this.status = status != null ? status.getValue() : null; }
     public Instant getDeletedAt() { return deletedAt; }
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
 }
-

@@ -1,5 +1,8 @@
 package com.oleksandrmytro.timecapsule.models;
 
+import com.oleksandrmytro.timecapsule.models.enums.ShareRole;
+import com.oleksandrmytro.timecapsule.models.enums.ShareStatus;
+import com.oleksandrmytro.timecapsule.models.enums.ShareVia;
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -22,13 +25,13 @@ public class Share {
     private ObjectId inviterId;
 
     @Field("role")
-    private String role = "viewer";
+    private String role = ShareRole.VIEWER.getValue();
 
     @Field("status")
-    private String status = "pending";
+    private String status = ShareStatus.PENDING.getValue();
 
     @Field("via")
-    private String via = "invite";
+    private String via = ShareVia.INVITE.getValue();
 
     @Field("shareToken")
     private String shareToken;
@@ -60,10 +63,13 @@ public class Share {
     public void setInviterId(ObjectId inviterId) { this.inviterId = inviterId; }
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+    public void setRole(ShareRole role) { this.role = role != null ? role.getValue() : null; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public void setStatus(ShareStatus status) { this.status = status != null ? status.getValue() : null; }
     public String getVia() { return via; }
     public void setVia(String via) { this.via = via; }
+    public void setVia(ShareVia via) { this.via = via != null ? via.getValue() : null; }
     public String getShareToken() { return shareToken; }
     public void setShareToken(String shareToken) { this.shareToken = shareToken; }
     public Instant getCreatedAt() { return createdAt; }
@@ -73,4 +79,3 @@ public class Share {
     public Instant getDeletedAt() { return deletedAt; }
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
 }
-
