@@ -21,7 +21,63 @@ export interface UserProfile {
   id: string
   email: string
   username?: string
+  displayName?: string
   avatarUrl?: string
+  bio?: string
+  location?: string
+  website?: string
+  isOnline?: boolean
+  isFollowing?: boolean
+  followersCount?: number
+  followingCount?: number
+  capsulesCount?: number
+  createdAt?: string
+}
+
+export interface UserPublic {
+  id: string
+  username: string
+  displayName: string
+  avatar?: string
+  bio?: string
+  isFollowing?: boolean
+  isOnline?: boolean
+}
+
+export interface ChatConversation {
+  id: string
+  user: {
+    id: string
+    username: string
+    displayName: string
+    avatar?: string
+    isOnline: boolean
+  }
+  lastMessage: {
+    text: string
+    timestamp: string
+    isRead: boolean
+    fromMe: boolean
+  }
+}
+
+export interface ChatMessage {
+  id: string
+  text: string
+  timestamp: string
+  fromMe: boolean
+  status?: 'sending' | 'sent' | 'delivered' | 'read'
+  type?: 'text' | 'capsule_share'
+  capsuleId?: string | null
+  capsuleTitle?: string | null
+}
+
+export interface MediaItem {
+  id: string
+  url: string
+  type: 'image' | 'video'
+  thumbnail?: string
+  alt?: string
 }
 
 export interface Capsule {
@@ -38,7 +94,7 @@ export interface Capsule {
   allowComments?: boolean
   allowReactions?: boolean
   tags?: string[] | null
-  media?: unknown
+  media?: MediaItem[] | null
   location?: unknown
 }
 
@@ -151,3 +207,73 @@ export async function unlockCapsule(id: string): Promise<Capsule> {
   return apiRequest(`/api/capsules/${id}/unlock`, { method: 'POST' })
 }
 
+/* ── Media API ─────────────────────────── */
+
+export async function uploadMedia(capsuleId: string, file: File): Promise<MediaItem> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const base = getApiBase()
+  const res = await fetch(`${base}/api/capsules/${capsuleId}/media`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : null } catch { data = text }
+  if (!res.ok) {
+    const message = data?.message || data?.error || text || `HTTP ${res.status}`
+    throw { status: res.status, message } as ApiError
+  }
+  return data
+}
+
+/* ── User Search & Profiles API ────────── */
+
+export async function searchUsers(query: string): Promise<UserPublic[]> {
+  return apiRequest(`/api/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' })
+}
+
+export async function getUserProfile(username: string): Promise<UserProfile> {
+  return apiRequest(`/api/users/${encodeURIComponent(username)}`, { method: 'GET' })
+}
+
+/* ── Follow API ────────────────────────── */
+
+export async function followUser(userId: string): Promise<void> {
+  return apiRequest(`/api/users/${userId}/follow`, { method: 'POST' })
+}
+
+export async function unfollowUser(userId: string): Promise<void> {
+  return apiRequest(`/api/users/${userId}/unfollow`, { method: 'POST' })
+}
+
+export async function getFollowers(userId: string, page = 0): Promise<UserPublic[]> {
+  return apiRequest(`/api/users/${userId}/followers?page=${page}`, { method: 'GET' })
+}
+
+export async function getFollowing(userId: string, page = 0): Promise<UserPublic[]> {
+  return apiRequest(`/api/users/${userId}/following?page=${page}`, { method: 'GET' })
+}
+
+/* ── Chat API ──────────────────────────── */
+
+export async function getConversations(): Promise<ChatConversation[]> {
+  return apiRequest('/api/chat/conversations', { method: 'GET' })
+}
+
+export async function getChatMessages(userId: string): Promise<ChatMessage[]> {
+  return apiRequest(`/api/chat/${userId}/messages`, { method: 'GET' })
+}
+
+export async function sendChatMessage(userId: string, text: string): Promise<ChatMessage> {
+  return apiRequest(`/api/chat/${userId}/messages`, { method: 'POST', body: { text } })
+}
+
+/* ── Share API ─────────────────────────── */
+
+export async function shareCapsule(capsuleId: string, userIds: string[]): Promise<void> {
+  return apiRequest(`/api/capsules/${capsuleId}/share`, { method: 'POST', body: { userIds } })
+}
+
+export { getApiBase }

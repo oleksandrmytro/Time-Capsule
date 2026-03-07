@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom'
 import './App.css'
 import Header from './components/Header'
 import { Footer } from './components/footer'
@@ -13,11 +13,17 @@ import { AccountForm } from './components/account/account-form'
 import { CapsulesList } from './components/capsules/capsules-list'
 import { CreateCapsuleForm } from './components/capsules/create-capsule-form'
 import { CapsuleDetail } from './components/capsules/capsule-detail'
+import { UserSearch } from './components/users/user-search'
+import { UserProfileView } from './components/users/user-profile'
+import { ChatList } from './components/chat/chat-list'
+import { ChatWindow } from './components/chat/chat-window'
 import {
-  apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser,
-  type UserProfile, type Capsule, type ApiError, type CreateCapsulePayload,
+  apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser, getUserProfile, getFollowing,
+  type UserProfile, type Capsule, type ApiError, type CreateCapsulePayload, type UserPublic,
 } from './services/api'
 import { connectCapsuleStream, disconnectCapsuleStream } from './services/ws'
+import { EmptyState } from './components/empty-state'
+import { ShieldOff } from 'lucide-react'
 
 function App() {
   const [form, setForm] = useState({ username: '', email: '', password: '', verificationCode: '' })
@@ -27,6 +33,8 @@ function App() {
   const [capsules, setCapsules] = useState<Capsule[]>([])
   const [capsulesLoading, setCapsulesLoading] = useState(false)
   const [selectedCapsule, setSelectedCapsule] = useState<Capsule | null>(null)
+  const [following, setFollowing] = useState<UserPublic[]>([])
+  const [loadingCapsule, setLoadingCapsule] = useState(false)
 
   const navigate = useNavigate()
   const location = useLocation()
@@ -47,6 +55,7 @@ function App() {
     if (!isValidProfile(data)) throw { status: 401, message: 'Invalid profile response' }
     setProfile(data)
     setTokens({ session: 'cookie' })
+    loadFollowing(data.id)
   }
   // apiRequest('/api/auth/session', { method: 'GET' }) - Для того щоб дізнатись чи є активна сесія користувача(чи залогінений)
   // Якщо відповідь показує, що користувач аутентифікований, ми викликаємо establishSession(), щоб отримати його профіль і встановити токени.
@@ -217,12 +226,42 @@ function App() {
     return () => disconnectCapsuleStream()
   }, [isAuthenticated, loadCapsules])
 
-  // --- Load capsules when navigating to /capsules ---
+  // --- Load capsules when navigating to /capsules or /account ---
   useEffect(() => {
-    if (location.pathname === '/capsules' && isAuthenticated) {
+    if ((location.pathname === '/capsules' || location.pathname === '/account') && isAuthenticated) {
       loadCapsules()
     }
   }, [location.pathname, isAuthenticated])
+
+  // --- Load following list after session ---
+  const loadFollowing = useCallback(async (userId?: string) => {
+    if (!userId) return
+    try { const data = await getFollowing(userId); setFollowing(data) } catch { setFollowing([]) }
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated || !profile?.id) return
+    loadFollowing(profile.id)
+  }, [isAuthenticated, profile?.id])
+
+  // Refresh following list when opening a capsule detail (so share dialog has data)
+  useEffect(() => {
+    if (selectedCapsule && isAuthenticated && profile?.id) {
+      loadFollowing(profile.id)
+    }
+  }, [selectedCapsule?.id, isAuthenticated, profile?.id])
+
+  // Direct navigation to /capsules/:id — fetch capsule and surface access errors
+  useEffect(() => {
+    if (!location.pathname.startsWith('/capsules/')) return
+    const [, , id] = location.pathname.split('/')
+    if (!id || selectedCapsule?.id === id || loadingCapsule) return
+    setLoadingCapsule(true)
+    getCapsule(id)
+      .then(setSelectedCapsule)
+      .catch((err: any) => setError(err))
+      .finally(() => setLoadingCapsule(false))
+  }, [location.pathname, selectedCapsule?.id, loadingCapsule])
 
   // --- Render ---
   return (
@@ -256,6 +295,10 @@ function App() {
           } />
 
           <Route path="/account" element={
+            profile ? <UserProfileView user={profile} isOwnProfile capsulesCount={capsules.length} /> : null
+          } />
+
+          <Route path="/account/settings" element={
             <AccountForm profile={profile} onProfileChange={setProfile} onSave={updateProfile} onLogout={logout} />
           } />
 
@@ -269,15 +312,71 @@ function App() {
 
           <Route path="/capsules/:id" element={
             selectedCapsule ? (
-              <CapsuleDetail capsule={selectedCapsule} onBack={async () => { await loadCapsules(); navigate('/capsules') }} onUnlock={handleUnlockCapsule} error={error} />
-            ) : null
+              <CapsuleDetail capsule={selectedCapsule} following={following} onBack={async () => { await loadCapsules(); navigate('/capsules') }} onUnlock={handleUnlockCapsule} error={error} onRefreshFollowing={() => profile?.id && loadFollowing(profile.id)} />
+            ) : error ? (
+              <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
+                <div className="w-full max-w-3xl">
+                  <EmptyState
+                    icon={ShieldOff}
+                    title={error?.status === 403 ? 'You don’t have access to this capsule' : 'Capsule not found'}
+                    description={error?.status === 403
+                      ? 'Ask the owner to share access with you or send you a fresh invite link.'
+                      : 'The link might be outdated or the capsule was removed. Please check the URL or contact the owner.'}
+                    actionLabel="Back to capsules"
+                    onAction={() => navigate('/capsules')}
+                  />
+                </div>
+              </div>
+             ) : (
+               <div className="mx-auto max-w-2xl px-4 py-10 text-center text-sm text-muted-foreground">Завантаження капсули...</div>
+             )
           } />
+
+          <Route path="/search" element={<UserSearch />} />
+
+          <Route path="/profile/:username" element={<ProfileRoute currentUserId={profile?.id} />} />
+
+          <Route path="/chat" element={
+            <div className="mx-auto max-w-4xl px-4 py-6" style={{ minHeight: '70vh' }}>
+              <ChatList currentUserId={profile?.id} />
+            </div>
+          } />
+
+          <Route path="/chat/:userId" element={<ChatRoute />} />
 
           {/* OAuth redirect handler — handled by useEffect above */}
           <Route path="/auth/oauth2/redirect" element={null} />
         </Routes>
       </main>
       <Footer />
+    </div>
+  )
+}
+
+function ProfileRoute({ currentUserId }: { currentUserId?: string }) {
+  const { username } = useParams<{ username: string }>()
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!username) return
+    setLoading(true)
+    getUserProfile(username).then(setUserProfile).catch(() => setUserProfile(null)).finally(() => setLoading(false))
+  }, [username])
+
+  if (loading) return <div className="flex items-center justify-center py-24"><div className="h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" /></div>
+  if (!userProfile) return <div className="py-24 text-center text-muted-foreground">User not found</div>
+
+  const isOwn = currentUserId === userProfile.id
+  return <UserProfileView user={userProfile} isOwnProfile={isOwn} />
+}
+
+function ChatRoute() {
+  const { userId } = useParams<{ userId: string }>()
+  if (!userId) return null
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-6" style={{ minHeight: '70vh' }}>
+      <ChatWindow userId={userId} />
     </div>
   )
 }

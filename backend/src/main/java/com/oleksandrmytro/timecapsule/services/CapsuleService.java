@@ -1,9 +1,13 @@
 package com.oleksandrmytro.timecapsule.services;
 
 import com.oleksandrmytro.timecapsule.dto.CreateCapsuleRequest;
+import com.oleksandrmytro.timecapsule.dto.ShareCapsuleRequest;
 import com.oleksandrmytro.timecapsule.events.CapsuleStatusEvent;
 import com.oleksandrmytro.timecapsule.models.Capsule;
+import com.oleksandrmytro.timecapsule.models.Share;
 import com.oleksandrmytro.timecapsule.repositories.CapsuleRepository;
+import com.oleksandrmytro.timecapsule.repositories.FollowRepository;
+import com.oleksandrmytro.timecapsule.repositories.ShareRepository;
 import com.oleksandrmytro.timecapsule.repositories.UserRepository;
 import com.oleksandrmytro.timecapsule.responses.CapsuleResponse;
 import org.bson.types.ObjectId;
@@ -12,10 +16,13 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -26,12 +33,20 @@ public class CapsuleService {
     private final MongoTemplate mongoTemplate;
     private final CapsuleNotificationService capsuleNotificationService;
     private final UserRepository userRepository;
+    private final FollowRepository followRepository;
+    private final ShareRepository shareRepository;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final ChatService chatService;
 
-    public CapsuleService(CapsuleRepository capsuleRepository, MongoTemplate mongoTemplate, CapsuleNotificationService capsuleNotificationService, UserRepository userRepository) {
+    public CapsuleService(CapsuleRepository capsuleRepository, MongoTemplate mongoTemplate, CapsuleNotificationService capsuleNotificationService, UserRepository userRepository, FollowRepository followRepository, ShareRepository shareRepository, SimpMessagingTemplate messagingTemplate, ChatService chatService) {
         this.capsuleRepository = capsuleRepository;
         this.mongoTemplate = mongoTemplate;
         this.capsuleNotificationService = capsuleNotificationService;
         this.userRepository = userRepository;
+        this.followRepository = followRepository;
+        this.shareRepository = shareRepository;
+        this.messagingTemplate = messagingTemplate;
+        this.chatService = chatService;
     }
 
     private void notifyOwner(String ownerId, Capsule capsule) {
@@ -151,8 +166,23 @@ public class CapsuleService {
             return toResponse(unlocked);
         }
 
+        // 1) Owner access
         Capsule capsule = capsuleRepository.findByIdAndOwnerIdAndDeletedAtIsNull(id, owner)
-                .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
+                .orElse(null);
+
+        // 2) Shared access (if current user is grantee)
+        if (capsule == null) {
+            ObjectId capsuleOid = new ObjectId(id);
+            boolean sharedWithUser = shareRepository.existsByCapsuleIdAndGranteeIdAndDeletedAtIsNull(capsuleOid, owner);
+            if (sharedWithUser) {
+                capsule = capsuleRepository.findByIdAndDeletedAtIsNull(id)
+                        .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
+            }
+        }
+
+        if (capsule == null) {
+            throw new IllegalArgumentException("Capsule not found");
+        }
 
         return toResponse(capsule);
     }
@@ -189,6 +219,61 @@ public class CapsuleService {
                 toEvent(updated)
         );
         return toResponse(updated);
+    }
+
+    public void shareCapsule(String capsuleId, String ownerId, List<String> userIds) {
+        ObjectId owner = new ObjectId(ownerId);
+        Query query = new Query(Criteria.where("_id").is(capsuleId).and("ownerId").is(owner).and("deletedAt").is(null));
+        Capsule capsule = mongoTemplate.findOne(query, Capsule.class);
+        if (capsule == null) throw new IllegalArgumentException("Capsule not found");
+
+        // Ensure capsule has share token
+        String shareToken = capsule.getShareToken();
+        if (shareToken == null || shareToken.isEmpty()) {
+            shareToken = generateShareToken();
+            Update update = new Update()
+                    .set("shareToken", shareToken)
+                    .set("updatedAt", Instant.now());
+            mongoTemplate.updateFirst(query, update, Capsule.class);
+        }
+
+        if (CollectionUtils.isEmpty(userIds)) return;
+
+        String senderName = userRepository.findById(ownerId)
+                .map(u -> u.getUsernameField() != null ? u.getUsernameField() : u.getEmail())
+                .orElse("Someone");
+
+        for (String uid : userIds) {
+            // Skip if already shared
+            ObjectId capsOid = new ObjectId(capsuleId);
+            ObjectId granteeOid = new ObjectId(uid);
+            if (shareRepository.existsByCapsuleIdAndGranteeIdAndDeletedAtIsNull(capsOid, granteeOid)) continue;
+
+            // Create share record in shares collection
+            Share share = new Share(capsuleId, uid, ownerId);
+            share.setRole("viewer");
+            share.setStatus("pending");
+            share.setVia("invite");
+            share.setShareToken(shareToken);
+            shareRepository.save(share);
+
+            String shareText = senderName + " shared a capsule: " + (capsule.getTitle() != null ? capsule.getTitle() : "");
+            chatService.saveShareMessage(ownerId, uid, capsuleId, capsule.getTitle(), shareText);
+
+            // Send chat message via WebSocket to grantee
+            Map<String, Object> chatMsg = Map.of(
+                    "id", UUID.randomUUID().toString(),
+                    "type", "capsule_share",
+                    "text", shareText,
+                    "capsuleId", capsuleId,
+                    "capsuleTitle", capsule.getTitle() != null ? capsule.getTitle() : "",
+                    "fromUserId", ownerId,
+                    "fromMe", false,
+                    "timestamp", Instant.now().toString(),
+                    "status", "sent"
+            );
+            messagingTemplate.convertAndSendToUser(uid, "/queue/chat", chatMsg);
+        }
     }
 
     private CapsuleStatusEvent toEvent(Capsule capsule) {

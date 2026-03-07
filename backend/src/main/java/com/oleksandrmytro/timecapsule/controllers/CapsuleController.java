@@ -1,6 +1,7 @@
 package com.oleksandrmytro.timecapsule.controllers;
 
 import com.oleksandrmytro.timecapsule.dto.CreateCapsuleRequest;
+import com.oleksandrmytro.timecapsule.dto.ShareCapsuleRequest;
 import com.oleksandrmytro.timecapsule.responses.CapsuleResponse;
 import com.oleksandrmytro.timecapsule.services.CapsuleService;
 import jakarta.validation.Valid;
@@ -45,6 +46,13 @@ public class CapsuleController {
         return ResponseEntity.ok(capsuleService.unlockCapsule(id, ownerId));
     }
 
+    @PostMapping("/{id}/share")
+    public ResponseEntity<Void> share(@PathVariable String id, @RequestBody ShareCapsuleRequest req, Authentication auth) {
+        String ownerId = currentUserId(auth);
+        capsuleService.shareCapsule(id, ownerId, req != null ? req.getUserIds() : null);
+        return ResponseEntity.ok().build();
+    }
+
     private String currentUserId(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof UserDetails ud)) {
             throw new IllegalArgumentException("Unauthorized");
@@ -55,4 +63,3 @@ public class CapsuleController {
         return ud.getUsername();
     }
 }
-

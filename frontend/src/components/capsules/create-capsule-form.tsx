@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertBanner } from "@/components/alert-banner"
+import { MediaUploader, type MediaFile } from "@/components/media/media-uploader"
 import { Loader2, Lock, Globe, Link2, X, ArrowLeft } from "lucide-react"
 import type { CreateCapsulePayload, ApiError } from "@/services/api"
 
@@ -25,6 +26,7 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   const [status, setStatus] = useState("sealed")
   const [allowComments, setAllowComments] = useState(true)
   const [allowReactions, setAllowReactions] = useState(true)
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([])
   const navigate = useNavigate()
 
   const error = parentError || localError
@@ -149,6 +151,12 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
               <Input id="expiresAt" name="expiresAt" type="datetime-local" className="h-11" min={minDateString} max={maxDateString} />
               <p className="text-xs text-muted-foreground">Optional</p>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium">Media</Label>
+            <MediaUploader files={mediaFiles} onFilesChange={setMediaFiles} />
+            <p className="text-xs text-muted-foreground">Optional. Add photos or videos to your capsule.</p>
           </div>
 
           <div className="flex flex-col gap-2">

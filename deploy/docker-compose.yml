@@ -23,6 +23,12 @@ services:
       - "8080:8080"   # API
       - "35729:35729" # LiveReload (optional)
       - "5005:5005"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/ws/info"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
     networks:
       - app-net
       - database_default
@@ -48,5 +54,9 @@ services:
     build: ../nginx
     env_file: dev.env
     ports: ["80:80"]
-    depends_on: [frontend, backend]
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
     networks: [app-net]

@@ -4,20 +4,26 @@ import { StatusBadge } from "@/components/status-badge"
 import { VisibilityBadge } from "@/components/visibility-badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, Calendar, Clock, Copy, CheckCircle2, MessageSquare, Heart, Lock, Unlock } from "lucide-react"
+import { MediaGallery } from "@/components/media/media-gallery"
+import { ShareCapsuleDialog } from "@/components/capsules/share-capsule-dialog"
+import { ArrowLeft, Calendar, Clock, Copy, CheckCircle2, MessageSquare, Heart, Lock, Unlock, Share2 } from "lucide-react"
 import type { Capsule, ApiError } from "@/services/api"
+import type { UserData } from "@/components/users/user-card"
 
 interface CapsuleDetailProps {
   capsule: Capsule
+  following: UserData[]
   onBack: () => void
   onUnlock: (id: string) => Promise<void>
   error: ApiError | null
+  onRefreshFollowing?: () => void
 }
 
-export function CapsuleDetail({ capsule, onBack, onUnlock, error }: CapsuleDetailProps) {
+export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onRefreshFollowing }: CapsuleDetailProps) {
   const [copied, setCopied] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
   const [showUnlockAnimation, setShowUnlockAnimation] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [timeLeft, setTimeLeft] = useState("")
   const hasShownUnlockAnimation = useRef(!capsule.isLocked)
   const prevLocked = useRef(capsule.isLocked)
@@ -91,7 +97,17 @@ export function CapsuleDetail({ capsule, onBack, onUnlock, error }: CapsuleDetai
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 lg:px-8">
       <div className="flex flex-col gap-8">
-        <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1.5 text-muted-foreground -ml-3"><ArrowLeft className="h-4 w-4" /> Back to My Capsules</Button>
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1.5 text-muted-foreground -ml-3"><ArrowLeft className="h-4 w-4" /> Back to My Capsules</Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShareOpen(true)}>
+              <Share2 className="h-3.5 w-3.5" /> Share
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => { const url = `${window.location.origin}/capsules/${capsule.id}`; navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }}>
+              {copied ? <><CheckCircle2 className="h-3.5 w-3.5 text-success" />Link Copied</> : <><Copy className="h-3.5 w-3.5" />Copy Link</>}
+            </Button>
+          </div>
+        </div>
         <div className="rounded-2xl border border-border bg-card shadow-sm">
           <div className="p-6 sm:p-8">
             <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -137,7 +153,7 @@ export function CapsuleDetail({ capsule, onBack, onUnlock, error }: CapsuleDetai
                 <p className="mt-4 text-xs text-muted-foreground">Will open automatically once time comes.</p>
                 {error && (
                   <div className="mt-4 rounded-lg bg-destructive/10 px-4 py-2 text-sm text-destructive">
-                    {error.message}
+                    {error.status === 403 ? 'Вибачте, у вас немає доступу до цієї капсули.' : error.message}
                   </div>
                 )}
               </div>
@@ -151,6 +167,11 @@ export function CapsuleDetail({ capsule, onBack, onUnlock, error }: CapsuleDetai
               ) : (
                 <div className="p-6 sm:p-8">
                   <p className="text-sm italic text-muted-foreground">No message content</p>
+                </div>
+              )}
+              {capsule.media && capsule.media.length > 0 && (
+                <div className="px-6 pb-6 sm:px-8 sm:pb-8">
+                  <MediaGallery media={capsule.media} />
                 </div>
               )}
               <Separator />
@@ -168,23 +189,9 @@ export function CapsuleDetail({ capsule, onBack, onUnlock, error }: CapsuleDetai
               </div>
             )}
           </div>
-          {capsule.visibility === "shared" && capsule.shareToken && (
-            <>
-              <Separator />
-              <div className="p-6 sm:p-8">
-                <p className="mb-3 text-sm font-medium text-card-foreground">Share Link</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 truncate rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">{`${window.location.origin}/shared/${capsule.shareToken}`}</code>
-                  <Button variant="outline" size="sm" onClick={copyShareLink} className="shrink-0 gap-1.5">
-                    {copied ? <><CheckCircle2 className="h-3.5 w-3.5 text-success" />Copied</> : <><Copy className="h-3.5 w-3.5" />Copy</>}
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
         </div>
+        <ShareCapsuleDialog capsuleId={capsule.id} capsuleTitle={capsule.title} following={following} open={shareOpen} onOpenChange={setShareOpen} />
       </div>
     </div>
   )
 }
-

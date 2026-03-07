@@ -1,5 +1,7 @@
 package com.oleksandrmytro.timecapsule.responses;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -13,6 +15,15 @@ public class UserProfileResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<AuthProvider> authProviders;
+    private Boolean isOnline;
+    private Boolean isFollowing;
+    private Long followersCount;
+    private Long followingCount;
+    private Long capsulesCount;
+    private String displayName;
+    private String bio;
+    private String location;
+    private String website;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -32,6 +43,28 @@ public class UserProfileResponse {
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
     public List<AuthProvider> getAuthProviders() { return authProviders; }
     public void setAuthProviders(List<AuthProvider> authProviders) { this.authProviders = authProviders; }
+    @JsonProperty("isOnline")
+    public Boolean getOnline() { return isOnline; }
+    @JsonProperty("isOnline")
+    public void setOnline(Boolean online) { isOnline = online; }
+    @JsonProperty("isFollowing")
+    public Boolean getFollowing() { return isFollowing; }
+    @JsonProperty("isFollowing")
+    public void setFollowing(Boolean following) { isFollowing = following; }
+    public Long getFollowersCount() { return followersCount; }
+    public void setFollowersCount(Long followersCount) { this.followersCount = followersCount; }
+    public Long getFollowingCount() { return followingCount; }
+    public void setFollowingCount(Long followingCount) { this.followingCount = followingCount; }
+    public Long getCapsulesCount() { return capsulesCount; }
+    public void setCapsulesCount(Long capsulesCount) { this.capsulesCount = capsulesCount; }
+    public String getDisplayName() { return displayName; }
+    public void setDisplayName(String displayName) { this.displayName = displayName; }
+    public String getBio() { return bio; }
+    public void setBio(String bio) { this.bio = bio; }
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
+    public String getWebsite() { return website; }
+    public void setWebsite(String website) { this.website = website; }
 
     public static class AuthProvider {
         private String provider;
@@ -49,4 +82,3 @@ public class UserProfileResponse {
         public void setName(String name) { this.name = name; }
     }
 }
-

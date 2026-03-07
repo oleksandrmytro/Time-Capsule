@@ -50,8 +50,8 @@ const collectionConfigs = {
   users: {
     schemaFile: './schemas/User.js',
     schemaVar: 'userSchema',
-    // Shard by _id to match application-side upserts; keep unique email index
-    shardKey: { _id: 'hashed' },
+    // Shard by email so the unique email index satisfies shard key requirement
+    shardKey: { email: 1 },
     description: "Stores user accounts",
     indexes: [
       // Optional online status index; removed nonexistent isActive field to avoid failures
@@ -174,6 +174,17 @@ const collectionConfigs = {
       { capsuleId: 1, createdAt: -1 }
     ]
   },
+
+  chat_messages: {
+    schemaFile: './schemas/ChatMessage.js',
+    schemaVar: 'chatMessageSchema',
+    shardKey: { toUserId: "hashed" },
+    description: "Chat messages history",
+    options: { presplit: { numInitialChunks: 4 } },
+    indexes: [
+      { fromUserId: 1, toUserId: 1, createdAt: -1 }
+    ]
+  },
 };
 
 // --- Create collections with loaded schemas ---
@@ -201,6 +212,7 @@ Object.entries(collectionConfigs).forEach(([collectionName, config]) => {
     else if (config.schemaVar === 'followSchema' && typeof followSchema !== 'undefined') schema = followSchema;
     else if (config.schemaVar === 'geoMarkerSchema' && typeof geoMarkerSchema !== 'undefined') schema = geoMarkerSchema;
     else if (config.schemaVar === 'feedEventSchema' && typeof feedEventSchema !== 'undefined') schema = feedEventSchema;
+    else if (config.schemaVar === 'chatMessageSchema' && typeof chatMessageSchema !== 'undefined') schema = chatMessageSchema;
     else {
       print(`❌ Schema variable ${config.schemaVar} not found after loading ${config.schemaFile}`);
     }
