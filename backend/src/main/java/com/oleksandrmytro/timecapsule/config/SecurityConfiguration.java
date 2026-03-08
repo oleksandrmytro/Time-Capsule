@@ -152,7 +152,7 @@ public class SecurityConfiguration {
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration()
+        CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost", "http://localhost:5173", "http://localhost:80"));           // Дозволяє запити з цих origin (фронтенд працює на localhost:5173)
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));            // Дозволяє ці HTTP-методи для CORS-запитів
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));          // Дозволяє ці заголовки в CORS-запитах (Authorization для JWT, Content-Type для JSON)

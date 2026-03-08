@@ -7,9 +7,13 @@ interface EmptyStateProps {
   description: string
   actionLabel?: string
   onAction?: () => void
+  action?: {
+    label: string
+    href: string
+  }
 }
 
-export function EmptyState({ icon: Icon, title, description, actionLabel, onAction }: EmptyStateProps) {
+export function EmptyState({ icon: Icon, title, description, actionLabel, onAction, action }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-16 text-center">
       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-secondary">
@@ -19,6 +23,9 @@ export function EmptyState({ icon: Icon, title, description, actionLabel, onActi
       <p className="mb-6 max-w-sm text-sm leading-relaxed text-muted-foreground">{description}</p>
       {actionLabel && onAction && (
         <Button onClick={onAction}>{actionLabel}</Button>
+      )}
+      {action && (
+        <Button onClick={() => window.location.href = action.href}>{action.label}</Button>
       )}
     </div>
   )

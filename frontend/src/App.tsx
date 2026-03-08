@@ -18,7 +18,7 @@ import { UserProfileView } from './components/users/user-profile'
 import { ChatList } from './components/chat/chat-list'
 import { ChatWindow } from './components/chat/chat-window'
 import {
-  apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser, getUserProfile, getFollowing,
+  apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser, getUserProfile, getFollowing, getFollowers, getUserCapsules, followUser, unfollowUser,
   type UserProfile, type Capsule, type ApiError, type CreateCapsulePayload, type UserPublic,
 } from './services/api'
 import { connectCapsuleStream, disconnectCapsuleStream } from './services/ws'
@@ -191,7 +191,7 @@ function App() {
     try {
       const data = await getCapsule(id)
       setSelectedCapsule(data)
-      navigate(`/capsules/${id}`)
+      navigate(`/capsules/${id}`, { state: { from: location.pathname } })
     } catch (err: any) { setError(err) }
   }
 
@@ -295,7 +295,7 @@ function App() {
           } />
 
           <Route path="/account" element={
-            profile ? <UserProfileView user={profile} isOwnProfile capsulesCount={capsules.length} /> : null
+            profile ? <AccountProfileRoute profile={profile} capsules={capsules} onLoadCapsules={loadCapsules} /> : null
           } />
 
           <Route path="/account/settings" element={
@@ -312,7 +312,21 @@ function App() {
 
           <Route path="/capsules/:id" element={
             selectedCapsule ? (
-              <CapsuleDetail capsule={selectedCapsule} following={following} onBack={async () => { await loadCapsules(); navigate('/capsules') }} onUnlock={handleUnlockCapsule} error={error} onRefreshFollowing={() => profile?.id && loadFollowing(profile.id)} />
+              <CapsuleDetail
+                capsule={selectedCapsule}
+                following={following}
+                onBack={async () => {
+                  const fromState = (location.state as { from?: string } | null)?.from
+                  const backTarget = fromState || '/capsules'
+                  if (backTarget === '/capsules') {
+                    await loadCapsules()
+                  }
+                  navigate(backTarget, { replace: true })
+                }}
+                onUnlock={handleUnlockCapsule}
+                error={error}
+                onRefreshFollowing={() => profile?.id && loadFollowing(profile.id)}
+              />
             ) : error ? (
               <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
                 <div className="w-full max-w-3xl">
@@ -323,7 +337,7 @@ function App() {
                       ? 'Ask the owner to share access with you or send you a fresh invite link.'
                       : 'The link might be outdated or the capsule was removed. Please check the URL or contact the owner.'}
                     actionLabel="Back to capsules"
-                    onAction={() => navigate('/capsules')}
+                    onAction={() => navigate((location.state as any)?.from || '/capsules')}
                   />
                 </div>
               </div>
@@ -356,19 +370,89 @@ function App() {
 function ProfileRoute({ currentUserId }: { currentUserId?: string }) {
   const { username } = useParams<{ username: string }>()
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [profileFollowers, setProfileFollowers] = useState<UserPublic[]>([])
+  const [profileFollowing, setProfileFollowing] = useState<UserPublic[]>([])
+  const [profileCapsules, setProfileCapsules] = useState<Capsule[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!username) return
     setLoading(true)
-    getUserProfile(username).then(setUserProfile).catch(() => setUserProfile(null)).finally(() => setLoading(false))
+    getUserProfile(username)
+      .then((profile) => {
+        setUserProfile(profile)
+        // Load followers, following, and capsules in parallel
+        const userId = profile.id
+        Promise.allSettled([
+          getFollowers(userId).then(setProfileFollowers).catch(() => setProfileFollowers([])),
+          getFollowing(userId).then(setProfileFollowing).catch(() => setProfileFollowing([])),
+          getUserCapsules(userId).then(data => setProfileCapsules(Array.isArray(data) ? data : [])).catch(() => setProfileCapsules([])),
+        ]).finally(() => setLoading(false))
+      })
+      .catch(() => { setUserProfile(null); setLoading(false) })
   }, [username])
 
   if (loading) return <div className="flex items-center justify-center py-24"><div className="h-8 w-8 animate-spin rounded-full border-4 border-accent border-t-transparent" /></div>
   if (!userProfile) return <div className="py-24 text-center text-muted-foreground">User not found</div>
 
   const isOwn = currentUserId === userProfile.id
-  return <UserProfileView user={userProfile} isOwnProfile={isOwn} />
+
+  // Map UserPublic to UserData format (user-card expects avatar, but backend sends avatarUrl)
+  const mapToUserData = (u: UserPublic) => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName || u.username,
+    avatar: u.avatar || u.avatarUrl,
+    bio: u.bio,
+    isFollowing: u.isFollowing,
+    isOnline: u.isOnline,
+  })
+
+  return (
+    <UserProfileView
+      user={userProfile}
+      isOwnProfile={isOwn}
+      capsulesCount={profileCapsules.length}
+      followers={profileFollowers.map(mapToUserData)}
+      following={profileFollowing.map(mapToUserData)}
+      capsules={profileCapsules}
+    />
+  )
+}
+
+function AccountProfileRoute({ profile, capsules, onLoadCapsules }: { profile: UserProfile; capsules: Capsule[]; onLoadCapsules: () => Promise<void> }) {
+  const [accountFollowers, setAccountFollowers] = useState<UserPublic[]>([])
+  const [accountFollowing, setAccountFollowing] = useState<UserPublic[]>([])
+
+  useEffect(() => {
+    if (!profile?.id) return
+    onLoadCapsules()
+    Promise.allSettled([
+      getFollowers(profile.id).then(setAccountFollowers).catch(() => setAccountFollowers([])),
+      getFollowing(profile.id).then(setAccountFollowing).catch(() => setAccountFollowing([])),
+    ])
+  }, [profile?.id])
+
+  const mapToUserData = (u: UserPublic) => ({
+    id: u.id,
+    username: u.username,
+    displayName: u.displayName || u.username,
+    avatar: u.avatar || u.avatarUrl,
+    bio: u.bio,
+    isFollowing: u.isFollowing,
+    isOnline: u.isOnline,
+  })
+
+  return (
+    <UserProfileView
+      user={profile}
+      isOwnProfile
+      capsulesCount={capsules.length}
+      followers={accountFollowers.map(mapToUserData)}
+      following={accountFollowing.map(mapToUserData)}
+      capsules={capsules}
+    />
+  )
 }
 
 function ChatRoute() {

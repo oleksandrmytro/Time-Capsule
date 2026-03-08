@@ -34,10 +34,16 @@ public class CapsuleController {
         return ResponseEntity.ok(capsuleService.listMine(ownerId));
     }
 
+    /**
+     * Отримання капсули за id. Дозволяє як авторизованим, так і анонімним користувачам.
+     * @param id
+     * @param auth
+     * @return
+     */
     @GetMapping("/{id}")
     public ResponseEntity<CapsuleResponse> get(@PathVariable String id, Authentication auth) {
-        String ownerId = currentUserId(auth);
-        return ResponseEntity.ok(capsuleService.getMine(id, ownerId));
+        String viewerId = currentUserIdOrNull(auth);
+        return ResponseEntity.ok(capsuleService.getAccessible(id, viewerId));
     }
 
     @PostMapping("/{id}/unlock")
@@ -53,6 +59,11 @@ public class CapsuleController {
         return ResponseEntity.ok().build();
     }
 
+    /**
+     * Там, де потрібен авторизований користувач
+     * @param auth
+     * @return
+     */
     private String currentUserId(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof UserDetails ud)) {
             throw new IllegalArgumentException("Unauthorized");
@@ -61,5 +72,18 @@ public class CapsuleController {
             return u.getId();
         }
         return ud.getUsername();
+    }
+
+    /**
+     * Там, де хочемо дозволити і анонімальних користувачів
+     * @param auth
+     * @return
+     */
+    private String currentUserIdOrNull(Authentication auth) {
+        try {
+            return currentUserId(auth);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
     }
 }

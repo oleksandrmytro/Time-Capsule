@@ -2,7 +2,9 @@ package com.oleksandrmytro.timecapsule.controllers;
 
 import com.oleksandrmytro.timecapsule.dto.UpdateProfileRequest;
 import com.oleksandrmytro.timecapsule.models.User;
+import com.oleksandrmytro.timecapsule.responses.CapsuleResponse;
 import com.oleksandrmytro.timecapsule.responses.UserProfileResponse;
+import com.oleksandrmytro.timecapsule.services.CapsuleService;
 import com.oleksandrmytro.timecapsule.services.UserService;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletResponse;
@@ -18,9 +20,11 @@ import java.util.stream.Collectors;
 public class UserController {
 
     private final UserService userService;
+    private final CapsuleService capsuleService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, CapsuleService capsuleService) {
         this.userService = userService;
+        this.capsuleService = capsuleService;
     }
 
     @GetMapping("/me")
@@ -102,6 +106,19 @@ public class UserController {
         String currentUserId = (auth != null && auth.getPrincipal() instanceof User u) ? u.getId() : null;
         try {
             List<UserProfileResponse> list = userService.following(id).stream().map(u -> toResponse(u, currentUserId)).toList();
+            return ResponseEntity.ok(list);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+    @GetMapping("/{id}/capsules")
+    public ResponseEntity<List<CapsuleResponse>> userCapsules(@PathVariable String id, Authentication auth) {
+        String currentUserId = (auth != null && auth.getPrincipal() instanceof User u) ? u.getId() : null;
+        try {
+            // Resolve user by id or username to get the actual user id
+            User target = userService.getByIdOrUsername(id);
+            List<CapsuleResponse> list = capsuleService.listUserCapsules(target.getId(), currentUserId);
             return ResponseEntity.ok(list);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.notFound().build();

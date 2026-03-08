@@ -4,6 +4,7 @@ import com.oleksandrmytro.timecapsule.dto.CreateCapsuleRequest;
 import com.oleksandrmytro.timecapsule.dto.ShareCapsuleRequest;
 import com.oleksandrmytro.timecapsule.events.CapsuleStatusEvent;
 import com.oleksandrmytro.timecapsule.models.Capsule;
+import com.oleksandrmytro.timecapsule.models.Share;
 import com.oleksandrmytro.timecapsule.models.enums.CapsuleStatus;
 import com.oleksandrmytro.timecapsule.models.enums.CapsuleVisibility;
 import com.oleksandrmytro.timecapsule.models.enums.ChatMessageStatus;
@@ -62,7 +63,7 @@ public class CapsuleService {
     }
 
     public CapsuleResponse create(String ownerId, CreateCapsuleRequest request) {
-        // Validate business rules
+        // Перевірка бізнес-правил
         validateCapsuleRequest(request);
 
         CapsuleVisibility visibility = CapsuleVisibility.fromValue(request.getVisibility());
@@ -85,11 +86,12 @@ public class CapsuleService {
             capsule.setLocation(mapGeo(request.getLocation()));
         }
 
-        // Generate shareToken for shared capsules
+        // Генерація токена для спільних капсул
         if (CapsuleVisibility.SHARED.equals(visibility)) {
             capsule.setShareToken(generateShareToken());
         }
 
+        // Зберігаємо відмічену дату створення/оновлення
         capsule.setCreatedAt(Instant.now());
         capsule.setUpdatedAt(Instant.now());
 
@@ -121,7 +123,7 @@ public class CapsuleService {
 
     public List<CapsuleResponse> listMine(String ownerId) {
         ObjectId owner = new ObjectId(ownerId);
-        // Find ready-to-open capsules to notify later
+        // Знаходимо капсули, що вже мають бути відкриті, щоб надіслати нотифікації пізніше
         Query readyQuery = new Query(
                 Criteria.where("ownerId").is(owner)
                         .and("status").is(CapsuleStatus.SEALED.getValue())
@@ -130,14 +132,14 @@ public class CapsuleService {
         );
         var ready = mongoTemplate.find(readyQuery, Capsule.class);
 
-        // Auto-unlock all ready capsules for this owner (shard-key targeted)
+        // Масово знімаємо блокування для готових капсул (shard-key targeted)
         Update unlockUpdate = new Update()
                 .set("status", CapsuleStatus.OPENED.getValue())
                 .set("openedAt", Instant.now())
                 .set("updatedAt", Instant.now());
         mongoTemplate.updateMulti(readyQuery, unlockUpdate, Capsule.class);
 
-        // Push notifications for those that were just unlocked
+        // Надсилаємо повідомлення про відкриття тим, хто був у черзі
         ready.forEach(c -> notifyOwner(ownerId, toUnlocked(c)));
 
         return capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner)
@@ -146,10 +148,33 @@ public class CapsuleService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Повертає публічні капсули для заданого користувача (видимі всім).
+     * Якщо запит робить власник — повертає усі капсули (включно з приватними).
+     */
+    public List<CapsuleResponse> listUserCapsules(String userId, String requesterId) {
+        ObjectId owner = new ObjectId(userId);
+        if (userId.equals(requesterId)) {
+            // Власний профіль — повертаємо всі капсули
+            return capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner)
+                    .stream()
+                    .map(this::toResponse)
+                    .collect(Collectors.toList());
+        }
+        // Інший користувач — тільки публічні капсули
+        return capsuleRepository.findByOwnerIdAndVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(owner, CapsuleVisibility.PUBLIC.getValue())
+                .stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+    }
+
     public CapsuleResponse getMine(String id, String ownerId) {
         ObjectId owner = new ObjectId(ownerId);
 
-        // Try to auto-unlock with shard-key targeted findAndModify
+        /**
+         * Забезпечує відкриття капсули одразу після настання unlockAt, якщо власник саме зараз її відкриває.
+         * Це підстраховує, якщо шедулер ще не завершив обробку: капсула буде відкритою саме у момент запиту.
+         */
         Query unlockQuery = new Query(
                 Criteria.where("_id").is(id)
                         .and("ownerId").is(owner)
@@ -234,7 +259,7 @@ public class CapsuleService {
         Capsule capsule = mongoTemplate.findOne(query, Capsule.class);
         if (capsule == null) throw new IllegalArgumentException("Capsule not found");
 
-        // Ensure capsule has share token
+        // Перевіряємо, чи капсула вже має токен для шарингу
         String shareToken = capsule.getShareToken();
         if (shareToken == null || shareToken.isEmpty()) {
             shareToken = generateShareToken();
@@ -244,19 +269,19 @@ public class CapsuleService {
             mongoTemplate.updateFirst(query, update, Capsule.class);
         }
 
-        if (CollectionUtils.isEmpty(userIds)) return;           // No users to share with, exit early
+        if (CollectionUtils.isEmpty(userIds)) return;           // Жодного користувача для шарингу — просто виходимо
 
         String senderName = userRepository.findById(ownerId)
                 .map(u -> u.getUsernameField() != null ? u.getUsernameField() : u.getEmail())
                 .orElse("Someone");
 
         for (String uid : userIds) {
-            // Skip if already shared
+            // Пропускаємо, якщо вже шарено
             ObjectId capsOid = new ObjectId(capsuleId);
             ObjectId granteeOid = new ObjectId(uid);
             if (shareRepository.existsByCapsuleIdAndGranteeIdAndDeletedAtIsNull(capsOid, granteeOid)) continue;
 
-            // Create share record in shares collection
+            // Створюємо запис про шаринг у колекції shares
             Share share = new Share(capsuleId, uid, ownerId);
             share.setRole(ShareRole.VIEWER);
             share.setStatus(ShareStatus.PENDING);
@@ -267,7 +292,7 @@ public class CapsuleService {
             String shareText = senderName + " shared a capsule: " + (capsule.getTitle() != null ? capsule.getTitle() : "");
             chatService.saveShareMessage(ownerId, uid, capsuleId, capsule.getTitle(), shareText);
 
-            // Send chat message via WebSocket to grantee
+            // Відправляємо повідомлення через WebSocket до отримувача
             Map<String, Object> chatMsg = Map.of(
                     "id", UUID.randomUUID().toString(),
                     "type", ChatMessageType.CAPSULE_SHARE.getValue(),
@@ -284,7 +309,7 @@ public class CapsuleService {
     }
 
     /**
-     * Преобразует объект Capsule в событие CapsuleStatusEvent для отправки через WebSocket.
+     * Перетворює капсулу в подію CapsuleStatusEvent, щоб надсилати її через WebSocket.
      * @param capsule
      * @return
      */
@@ -303,7 +328,7 @@ public class CapsuleService {
     }
 
     /**
-     * Преобразует объект Capsule в CapsuleResponse для API-відповіді, враховуючи статус блокування.
+     * Перетворює Capsule у CapsuleResponse для API-відповіді з урахуванням блокування.
      * @param capsule
      * @return
      */
@@ -381,5 +406,29 @@ public class CapsuleService {
     private boolean isLocked(String status, Instant unlockAt) {
         CapsuleStatus st = CapsuleStatus.fromValue(status);
         return CapsuleStatus.SEALED.equals(st) && unlockAt != null && Instant.now().isBefore(unlockAt);
+    }
+
+    /**
+     * Повертає капсулу залежно від доступу глядача: власник/спільний доступ або публічна капсула.
+     */
+    public CapsuleResponse getAccessible(String id, String viewerId) {
+        // Якщо користувач авторизований, спочатку пробуємо власницький/шаринг-режим
+        if (viewerId != null) {
+            try {
+                return getMine(id, viewerId);
+            } catch (IllegalArgumentException ex) {
+                // Якщо доступу нема — перевіряємо публічний режим
+            }
+        }
+
+        // Публічний доступ: будь-хто (навіть без логіну) може переглядати public капсули
+        Capsule capsule = capsuleRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
+
+        if (CapsuleVisibility.PUBLIC.equals(CapsuleVisibility.fromValue(capsule.getVisibility()))) {
+            return toResponse(capsule);
+        }
+
+        throw new IllegalArgumentException("Capsule not found or not accessible");
     }
 }

@@ -39,6 +39,7 @@ export interface UserPublic {
   username: string
   displayName: string
   avatar?: string
+  avatarUrl?: string
   bio?: string
   isFollowing?: boolean
   isOnline?: boolean
@@ -254,6 +255,10 @@ export async function getFollowers(userId: string, page = 0): Promise<UserPublic
 
 export async function getFollowing(userId: string, page = 0): Promise<UserPublic[]> {
   return apiRequest(`/api/users/${userId}/following?page=${page}`, { method: 'GET' })
+}
+
+export async function getUserCapsules(userId: string): Promise<Capsule[]> {
+  return apiRequest(`/api/users/${encodeURIComponent(userId)}/capsules`, { method: 'GET' })
 }
 
 /* ── Chat API ──────────────────────────── */

@@ -98,7 +98,7 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
     <div className="mx-auto max-w-3xl px-4 py-10 lg:px-8">
       <div className="flex flex-col gap-8">
         <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1.5 text-muted-foreground -ml-3"><ArrowLeft className="h-4 w-4" /> Back to My Capsules</Button>
+          <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1.5 text-muted-foreground -ml-3"><ArrowLeft className="h-4 w-4" /> Back</Button>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShareOpen(true)}>
               <Share2 className="h-3.5 w-3.5" /> Share
