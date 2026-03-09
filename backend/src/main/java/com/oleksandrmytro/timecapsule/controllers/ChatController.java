@@ -46,12 +46,12 @@ public class ChatController {
     public ResponseEntity<Map<String, Object>> sendMessage(@PathVariable String userId, @RequestBody ChatMessageRequest body, Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof User me)) return ResponseEntity.status(401).build();
         try {
-            Map<String, Object> dto = chatService.sendMessage(me.getId(), userId, body.text());
+            Map<String, Object> dto = chatService.sendMessage(me.getId(), userId, body.text(), body.replyToMessageId());
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
     }
 
-    public record ChatMessageRequest(String text) {}
+    public record ChatMessageRequest(String text, String replyToMessageId) {}
 }

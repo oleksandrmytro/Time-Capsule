@@ -3,23 +3,15 @@ import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Send, Loader2, ArrowLeft, MoreVertical, Package } from "lucide-react"
+import { Send, Loader2, ArrowLeft, MoreVertical, Package, Reply, X, CornerDownRight } from "lucide-react"
 import { sendChatMessage, getUserProfile, getChatMessages, type ChatMessage } from "@/services/api"
 import { setChatCallbacks, type ChatWsMessage } from "@/services/ws"
 
-interface ChatWindowProps {
-  userId: string
-}
+interface ChatWindowProps { userId: string }
 
 interface ChatUser {
-  id: string
-  username: string
-  displayName: string
-  avatar?: string
-  isOnline: boolean
-  lastSeen?: string
+  id: string; username: string; displayName: string; avatar?: string; isOnline: boolean
 }
 
 interface DisplayMessage extends ChatMessage {
@@ -34,87 +26,75 @@ export function ChatWindow({ userId }: ChatWindowProps) {
   const [inputValue, setInputValue] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [replyTo, setReplyTo] = useState<DisplayMessage | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
-  // Load user profile
+  // Load user profile and messages
   useEffect(() => {
     setIsLoading(true)
-    setMessages([]) // No persistence — start empty
+    setMessages([])
     Promise.all([
       getUserProfile(userId)
         .then(p => setUser({ id: p.id, username: p.username || '', displayName: p.displayName || p.username || '', avatar: p.avatarUrl, isOnline: p.isOnline ?? false }))
         .catch(() => setUser({ id: userId, username: userId, displayName: userId, isOnline: false })),
-      getChatMessages(userId).then((msgs) => setMessages(msgs as DisplayMessage[])).catch(() => setMessages([])),
-    ])
-      .finally(() => setIsLoading(false))
+      getChatMessages(userId).then(msgs => setMessages(msgs as DisplayMessage[])).catch(() => setMessages([])),
+    ]).finally(() => setIsLoading(false))
   }, [userId])
 
   // Subscribe to WS chat messages for this peer
   const handleWsMessage = useCallback((msg: ChatWsMessage) => {
-    // Only show messages from the current peer
     if (msg.fromUserId === userId || msg.fromMe) {
-      const dm: DisplayMessage = {
-        id: msg.id,
-        text: msg.text,
-        timestamp: msg.timestamp,
-        fromMe: msg.fromMe,
-        status: msg.status as any,
-        type: msg.type,
-        capsuleId: msg.capsuleId,
-        capsuleTitle: msg.capsuleTitle,
-      }
-      setMessages(prev => [...prev, dm])
+      setMessages(prev => [...prev, {
+        id: msg.id, text: msg.text, timestamp: msg.timestamp, fromMe: msg.fromMe,
+        status: msg.status as any, type: msg.type, capsuleId: msg.capsuleId,
+        capsuleTitle: msg.capsuleTitle, replyToMessageId: msg.replyToMessageId,
+      }])
     }
   }, [userId])
 
-  useEffect(() => {
-    setChatCallbacks({ onMessage: handleWsMessage })
-    return () => setChatCallbacks({})
-  }, [handleWsMessage])
-
+  useEffect(() => { setChatCallbacks({ onMessage: handleWsMessage }); return () => setChatCallbacks({}) }, [handleWsMessage])
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [messages])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputValue.trim() || isSending) return
-    const text = inputValue.trim(); setInputValue(""); setIsSending(true)
+    const text = inputValue.trim()
+    const replyId = replyTo?.id || null
+    setInputValue(""); setReplyTo(null); setIsSending(true)
     try {
-      const msg = await sendChatMessage(userId, text)
-      // Add local message (WS echo may also arrive — deduplicate by id)
-      setMessages(prev => {
-        if (prev.some(m => m.id === msg.id)) return prev
-        return [...prev, { ...msg, type: 'text' }]
-      })
+      const msg = await sendChatMessage(userId, text, replyId)
+      setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, { ...msg, type: 'text' }])
     } catch {
-      setMessages(prev => [...prev, { id: Date.now().toString(), text, timestamp: new Date().toISOString(), fromMe: true, status: 'sent', type: 'text' }])
-    }
-    finally { setIsSending(false); inputRef.current?.focus() }
+      setMessages(prev => [...prev, { id: Date.now().toString(), text, timestamp: new Date().toISOString(), fromMe: true, status: 'sent', type: 'text', replyToMessageId: replyId }])
+    } finally { setIsSending(false); inputRef.current?.focus() }
   }
+
+  const getParentMessage = (id?: string | null) => id ? messages.find(m => m.id === id) || null : null
 
   const formatTime = (ts: string) => new Date(ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
   const formatDate = (ts: string) => {
-    const d = new Date(ts); const today = new Date(); const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1)
+    const d = new Date(ts), today = new Date(), yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
     if (d.toDateString() === today.toDateString()) return "Today"
     if (d.toDateString() === yesterday.toDateString()) return "Yesterday"
     return d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })
   }
 
-  const groupedMessages: { date: string; messages: DisplayMessage[] }[] = []
-  let currentDate = ""
-  messages.forEach((msg) => {
-    const msgDate = new Date(msg.timestamp).toDateString()
-    if (msgDate !== currentDate) { currentDate = msgDate; groupedMessages.push({ date: msg.timestamp, messages: [msg] }) }
-    else { groupedMessages[groupedMessages.length - 1].messages.push(msg) }
+  const grouped: { date: string; messages: DisplayMessage[] }[] = []
+  let curDate = ""
+  messages.forEach(msg => {
+    const d = new Date(msg.timestamp).toDateString()
+    if (d !== curDate) { curDate = d; grouped.push({ date: msg.timestamp, messages: [msg] }) }
+    else grouped[grouped.length - 1].messages.push(msg)
   })
 
   if (!user) return <div className="flex items-center justify-center h-full"><Loader2 className="h-6 w-6 animate-spin" /></div>
 
-  const showMessages = !isLoading || messages.length > 0
-
   return (
     <div className="flex h-full flex-col bg-background">
+      {/* Header */}
       <div className="flex items-center gap-3 border-b border-border bg-card px-4 py-3">
         <Button variant="ghost" size="icon" className="shrink-0 md:hidden" onClick={() => navigate('/chat')}><ArrowLeft className="h-5 w-5" /></Button>
         <button onClick={() => navigate(`/profile/${user.username}`)} className="relative shrink-0 bg-transparent border-none p-0 cursor-pointer">
@@ -127,13 +107,12 @@ export function ChatWindow({ userId }: ChatWindowProps) {
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => navigate(`/profile/${user.username}`)}>View Profile</DropdownMenuItem>
-          </DropdownMenuContent>
+          <DropdownMenuContent align="end"><DropdownMenuItem onClick={() => navigate(`/profile/${user.username}`)}>View Profile</DropdownMenuItem></DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4" style={{ maxHeight: '65vh' }} ref={scrollRef}>
         {isLoading && messages.length === 0 ? (
           <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : messages.length === 0 ? (
@@ -144,46 +123,90 @@ export function ChatWindow({ userId }: ChatWindowProps) {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            {groupedMessages.map((group) => (
-              <div key={group.date} className="flex flex-col gap-2">
-                <div className="flex items-center gap-3 py-2"><div className="h-px flex-1 bg-border" /><span className="text-xs text-muted-foreground">{formatDate(group.date)}</span><div className="h-px flex-1 bg-border" /></div>
-                {group.messages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.fromMe ? "justify-end" : "justify-start"}`}>
-                    {msg.type === 'capsule_share' ? (
-                      <button
-                        onClick={() => msg.capsuleId && navigate(`/capsules/${msg.capsuleId}`)}
-                        className={`max-w-[75%] rounded-2xl px-4 py-3 border cursor-pointer transition-colors text-left ${msg.fromMe ? "bg-primary/10 border-primary/30 hover:bg-primary/20" : "bg-accent/10 border-accent/30 hover:bg-accent/20"}`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <Package className="h-4 w-4 text-accent" />
-                          <span className="text-xs font-semibold text-accent">Shared Capsule</span>
+            {grouped.map(group => (
+              <div key={group.date} className="flex flex-col gap-1">
+                {/* Date separator */}
+                <div className="flex items-center gap-3 py-2">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">{formatDate(group.date)}</span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+
+                {group.messages.map(msg => {
+                  const parent = getParentMessage(msg.replyToMessageId)
+
+                  return (
+                    <div key={msg.id} className={`group/msg flex items-end gap-1.5 ${msg.fromMe ? "justify-end" : "justify-start"}`}>
+
+                      {/* Reply button — LEFT for own messages */}
+                      {msg.fromMe && msg.type !== 'capsule_share' && (
+                        <button type="button" onClick={() => { setReplyTo(msg); inputRef.current?.focus() }}
+                          className="mb-1 shrink-0 rounded-full p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-accent group-hover/msg:opacity-100">
+                          <Reply className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+
+                      {/* Bubble */}
+                      {msg.type === 'capsule_share' ? (
+                        <button onClick={() => msg.capsuleId && navigate(`/capsules/${msg.capsuleId}`)}
+                          className={`max-w-[72%] rounded-2xl px-4 py-3 border cursor-pointer transition-colors text-left ${msg.fromMe ? "bg-primary/10 border-primary/30 hover:bg-primary/20" : "bg-accent/10 border-accent/30 hover:bg-accent/20"}`}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Package className="h-4 w-4 text-accent" />
+                            <span className="text-xs font-semibold text-accent">Shared Capsule</span>
+                          </div>
+                          <p className="text-sm font-medium text-card-foreground">{msg.capsuleTitle || 'Capsule'}</p>
+                          <p className="text-xs text-muted-foreground mt-1">Tap to view</p>
+                          <p className={`mt-1 text-[10px] ${msg.fromMe ? "text-primary/70" : "text-muted-foreground"}`}>{formatTime(msg.timestamp)}</p>
+                        </button>
+                      ) : (
+                        <div className={`max-w-[72%] rounded-2xl px-4 py-2.5 ${msg.fromMe ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
+                          {/* Quote block — like comments */}
+                          {parent && (
+                            <div className={`mb-2 flex items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-xs ${msg.fromMe ? "bg-white/15" : "bg-black/8"}`}>
+                              <CornerDownRight className="mt-0.5 h-3 w-3 shrink-0 opacity-70" />
+                              <span className="line-clamp-2 opacity-80">{parent.text}</span>
+                            </div>
+                          )}
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                          <p className={`mt-1 text-right text-[10px] ${msg.fromMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>{formatTime(msg.timestamp)}</p>
                         </div>
-                        <p className="text-sm font-medium text-card-foreground">{msg.capsuleTitle || 'Capsule'}</p>
-                        <p className="text-xs text-muted-foreground mt-1">Tap to view</p>
-                        <p className={`mt-1 text-[10px] ${msg.fromMe ? "text-primary/70" : "text-muted-foreground"}`}>{formatTime(msg.timestamp)}</p>
-                      </button>
-                    ) : (
-                      <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${msg.fromMe ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
-                        <p className="text-sm leading-relaxed">{msg.text}</p>
-                        <p className={`mt-1 text-[10px] ${msg.fromMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{formatTime(msg.timestamp)}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      )}
+
+                      {/* Reply button — RIGHT for other's messages */}
+                      {!msg.fromMe && msg.type !== 'capsule_share' && (
+                        <button type="button" onClick={() => { setReplyTo(msg); inputRef.current?.focus() }}
+                          className="mb-1 shrink-0 rounded-full p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-muted hover:text-accent group-hover/msg:opacity-100">
+                          <Reply className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-border bg-card p-4">
-        <Input ref={inputRef} value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder="Type a message..." className="flex-1" disabled={isSending} />
-        <Button type="submit" size="icon" disabled={!inputValue.trim() || isSending}>
-          {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-        </Button>
+      {/* Input */}
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-border bg-card p-4">
+        {replyTo && (
+          <div className="flex items-center justify-between rounded-lg bg-accent/10 px-3 py-2 text-xs">
+            <div className="flex items-center gap-2 min-w-0">
+              <CornerDownRight className="h-3.5 w-3.5 text-accent shrink-0" />
+              <span className="font-semibold text-accent">Reply to</span>
+              <span className="line-clamp-1 text-foreground/70">{replyTo.text}</span>
+            </div>
+            <button type="button" onClick={() => setReplyTo(null)} className="shrink-0 ml-2 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <Input ref={inputRef} value={inputValue} onChange={e => setInputValue(e.target.value)} placeholder="Type a message..." className="flex-1" disabled={isSending} />
+          <Button type="submit" size="icon" disabled={!inputValue.trim() || isSending}>
+            {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </Button>
+        </div>
       </form>
     </div>
   )
 }
-
-

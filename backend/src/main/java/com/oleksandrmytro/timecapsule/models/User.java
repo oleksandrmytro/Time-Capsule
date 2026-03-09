@@ -84,9 +84,21 @@ public class User implements UserDetails {
         return password;
     }
 
+    /**
+     * Повертає userId як "username" для Spring Security.
+     *
+     * Spring Security використовує getUsername() як унікальний ідентифікатор для:
+     * 1. JWT subject (sub) — JwtService.buildToken() викликає userDetails.getUsername()
+     * 2. loadUserByUsername(userId) — ApplicationConfiguration шукає User по userId
+     * 3. isTokenValid — порівнює subject з JWT і getUsername()
+     *
+     * Тепер все чисто: JWT subject = userId, Spring шукає по userId, getUsername() = userId.
+     * Для отримання email використовуй getEmail().
+     * Для відображуваного імені використовуй getUsernameField().
+     */
     @Override
     public String getUsername() {
-        return email; // Use email as username for authentication
+        return id; // userId — унікальний MongoDB ObjectId як рядок
     }
 
     @Override
@@ -118,6 +130,10 @@ public class User implements UserDetails {
         this.id = id;
     }
 
+    /**
+     * Повертає реальний username користувача (відображуване ім'я, наприклад "Olexandr").
+     * Використовуй цей метод замість getUsername(), який повертає email для Spring Security.
+     */
     public String getUsernameField() {
         return username;
     }

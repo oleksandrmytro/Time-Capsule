@@ -33,20 +33,26 @@ public class ChatService {
     }
 
     /**
-     * Send a text message from currentUserId to peerId via WebSocket only.
+     * Відправляє текстове повідомлення від поточного користувача (currentUserId) до отримувача (peerId).
+     * Якщо передано replyToMessageId (як у відповіді), зберігається посилання на батьківське повідомлення —
+     * це потрібно для відображення цитати на фронтенді.
      */
-    public Map<String, Object> sendMessage(String currentUserId, String peerId, String text) {
+    public Map<String, Object> sendMessage(String currentUserId, String peerId, String text, String replyToMessageId) {
         if (!StringUtils.hasText(text)) throw new IllegalArgumentException("Message text is empty");
         userService.getById(peerId); // validate peer exists
         ChatMessage msg = new ChatMessage(currentUserId, peerId, text.trim());
         msg.setType(ChatMessageType.TEXT);
         msg.setCreatedAt(Instant.now());
         msg.setStatus(ChatMessageStatus.SENT);
+        if (StringUtils.hasText(replyToMessageId)) {
+            msg.setReplyToMessageId(new ObjectId(replyToMessageId));
+        }
         ChatMessage saved = chatMessageRepository.save(msg);
         return deliver(saved, currentUserId, peerId);
     }
 
     public Map<String, Object> saveShareMessage(String ownerId, String granteeId, String capsuleId, String capsuleTitle, String text) {
+        // Зберігає повідомлення з типом capsule_share та доставляє через WS.
         ChatMessage msg = new ChatMessage(ownerId, granteeId, text);
         msg.setType(ChatMessageType.CAPSULE_SHARE);
         msg.setCapsuleId(new ObjectId(capsuleId));
@@ -58,6 +64,8 @@ public class ChatService {
     }
 
     private Map<String, Object> deliver(ChatMessage saved, String senderId, String peerId) {
+        // Формує payload для WebSocket-публікації: peerId — STOMP-principal отримувача.
+        // Через convertAndSendToUser(peerId, ...) повідомлення потрапляє саме до потрібного WebSocket-підключення.
         Map<String, Object> payloadToPeer = new HashMap<>();
         payloadToPeer.put("id", saved.getId());
         payloadToPeer.put("type", saved.getType());
@@ -68,6 +76,9 @@ public class ChatService {
         payloadToPeer.put("status", saved.getStatus());
         if (saved.getCapsuleId() != null) payloadToPeer.put("capsuleId", saved.getCapsuleId().toHexString());
         if (saved.getCapsuleTitle() != null) payloadToPeer.put("capsuleTitle", saved.getCapsuleTitle());
+        if (saved.getReplyToMessageId() != null) payloadToPeer.put("replyToMessageId", saved.getReplyToMessageId().toHexString());
+        System.out.println("[CHAT] deliver to peerId=" + peerId + " payload=" + payloadToPeer);
+        // Spring шукає WS зєднання де Principal.getName() == peerId і відправляє повідомлення на канал "/queue/chat"
         messagingTemplate.convertAndSendToUser(peerId, "/queue/chat", payloadToPeer);
 
         Map<String, Object> payloadToSender = new HashMap<>();
@@ -80,10 +91,12 @@ public class ChatService {
         payloadToSender.put("status", saved.getStatus());
         if (saved.getCapsuleId() != null) payloadToSender.put("capsuleId", saved.getCapsuleId().toHexString());
         if (saved.getCapsuleTitle() != null) payloadToSender.put("capsuleTitle", saved.getCapsuleTitle());
+        if (saved.getReplyToMessageId() != null) payloadToSender.put("replyToMessageId", saved.getReplyToMessageId().toHexString());
         return payloadToSender;
     }
 
     public List<Map<String, Object>> getConversation(String currentUserId, String peerId) {
+        // Повертає історію діалогу між currentUserId та peerId, додаючи replyToMessageId для кожного запису.
         List<ChatMessage> list = chatMessageRepository
                 .findByFromUserIdAndToUserIdOrFromUserIdAndToUserIdOrderByCreatedAtAsc(new ObjectId(currentUserId), new ObjectId(peerId), new ObjectId(peerId), new ObjectId(currentUserId));
         List<Map<String, Object>> dto = new ArrayList<>();
@@ -99,12 +112,14 @@ public class ChatService {
             entry.put("status", m.getStatus());
             if (m.getCapsuleId() != null) entry.put("capsuleId", m.getCapsuleId().toHexString());
             if (m.getCapsuleTitle() != null) entry.put("capsuleTitle", m.getCapsuleTitle());
+            if (m.getReplyToMessageId() != null) entry.put("replyToMessageId", m.getReplyToMessageId().toHexString());
             dto.add(entry);
         }
         return dto;
     }
 
     public List<Map<String, Object>> listConversations(String currentUserId) {
+        // Формує список «останніх повідомлень по peer» для сторінки переписок, тож peerId — ідентифікатор співрозмовника.
         List<ChatMessage> recent = chatMessageRepository.findByFromUserIdOrToUserIdOrderByCreatedAtDesc(new ObjectId(currentUserId), new ObjectId(currentUserId));
         Map<String, ChatMessage> lastByPeer = new LinkedHashMap<>();
         for (ChatMessage msg : recent) {

@@ -93,7 +93,7 @@ public class CapsuleUnlockScheduler {
             // Знаходимо власника капсули в базі за ownerId
             userRepository.findById(ownerId).ifPresent(user ->
                     // Якщо користувач знайдений — надсилаємо йому WS-подію через notificationService
-                    notificationService.sendStatus(user.getEmail(), event)
+                    notificationService.sendStatus(user.getId(), event)
             );
         }
     }

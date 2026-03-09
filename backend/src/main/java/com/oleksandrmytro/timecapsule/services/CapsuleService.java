@@ -58,7 +58,7 @@ public class CapsuleService {
 
     private void notifyOwner(String ownerId, Capsule capsule) {
         userRepository.findById(ownerId).ifPresent(user ->
-                capsuleNotificationService.sendStatus(user.getEmail(), toEvent(capsule))
+                capsuleNotificationService.sendStatus(user.getId(), toEvent(capsule))
         );
     }
 
@@ -247,31 +247,46 @@ public class CapsuleService {
         }
 
         capsuleNotificationService.sendStatus(
-                userRepository.findById(ownerId).map(u -> u.getEmail()).orElse(ownerId),
+                userRepository.findById(ownerId).map(u -> u.getId()).orElse(ownerId),
                 toEvent(updated)
         );
         return toResponse(updated);
     }
 
-    public void shareCapsule(String capsuleId, String ownerId, List<String> userIds) {
-        ObjectId owner = new ObjectId(ownerId);
-        Query query = new Query(Criteria.where("_id").is(capsuleId).and("ownerId").is(owner).and("deletedAt").is(null));
-        Capsule capsule = mongoTemplate.findOne(query, Capsule.class);
+    public void shareCapsule(String capsuleId, String sharerId, List<String> userIds) {
+        // Шукаємо капсулу тільки за id та deletedAt (без перевірки ownerId)
+        Query findQuery = new Query(Criteria.where("_id").is(capsuleId).and("deletedAt").is(null));
+        Capsule capsule = mongoTemplate.findOne(findQuery, Capsule.class);
         if (capsule == null) throw new IllegalArgumentException("Capsule not found");
 
-        // Перевіряємо, чи капсула вже має токен для шарингу
+        // Перевіряємо права доступу:
+        // - власник може ділитись завжди
+        // - інші користувачі можуть ділитись тільки публічними капсулами
+        boolean isOwner = capsule.getOwnerId() != null && capsule.getOwnerId().toHexString().equals(sharerId);
+        boolean isPublic = "public".equalsIgnoreCase(capsule.getVisibility());
+        if (!isOwner && !isPublic) {
+            throw new IllegalArgumentException("You can only share public capsules");
+        }
+
+        // shareToken генерується/зберігається тільки власником
         String shareToken = capsule.getShareToken();
-        if (shareToken == null || shareToken.isEmpty()) {
+        if (isOwner && (shareToken == null || shareToken.isEmpty())) {
             shareToken = generateShareToken();
+            Query ownerQuery = new Query(
+                Criteria.where("_id").is(capsuleId)
+                    .and("ownerId").is(capsule.getOwnerId())
+                    .and("deletedAt").is(null)
+            );
             Update update = new Update()
                     .set("shareToken", shareToken)
                     .set("updatedAt", Instant.now());
-            mongoTemplate.updateFirst(query, update, Capsule.class);
+            mongoTemplate.updateFirst(ownerQuery, update, Capsule.class);
         }
 
-        if (CollectionUtils.isEmpty(userIds)) return;           // Жодного користувача для шарингу — просто виходимо
+        if (CollectionUtils.isEmpty(userIds)) return;   // Жодного користувача для шарингу — виходимо
 
-        String senderName = userRepository.findById(ownerId)
+        // Ім'я того, хто ділиться (не обов'язково власник)
+        String senderName = userRepository.findById(sharerId)
                 .map(u -> u.getUsernameField() != null ? u.getUsernameField() : u.getEmail())
                 .orElse("Someone");
 
@@ -281,16 +296,16 @@ public class CapsuleService {
             ObjectId granteeOid = new ObjectId(uid);
             if (shareRepository.existsByCapsuleIdAndGranteeIdAndDeletedAtIsNull(capsOid, granteeOid)) continue;
 
-            // Створюємо запис про шаринг у колекції shares
-            Share share = new Share(capsuleId, uid, ownerId);
+            // Створюємо запис про шаринг у колекції shares (grantedBy = той, хто ділиться)
+            Share share = new Share(capsuleId, uid, sharerId);
             share.setRole(ShareRole.VIEWER);
             share.setStatus(ShareStatus.PENDING);
             share.setVia(ShareVia.INVITE);
-            share.setShareToken(shareToken);
+            if (shareToken != null) share.setShareToken(shareToken);
             shareRepository.save(share);
 
             String shareText = senderName + " shared a capsule: " + (capsule.getTitle() != null ? capsule.getTitle() : "");
-            chatService.saveShareMessage(ownerId, uid, capsuleId, capsule.getTitle(), shareText);
+            chatService.saveShareMessage(sharerId, uid, capsuleId, capsule.getTitle(), shareText);
 
             // Відправляємо повідомлення через WebSocket до отримувача
             Map<String, Object> chatMsg = Map.of(
@@ -299,7 +314,7 @@ public class CapsuleService {
                     "text", shareText,
                     "capsuleId", capsuleId,
                     "capsuleTitle", capsule.getTitle() != null ? capsule.getTitle() : "",
-                    "fromUserId", ownerId,
+                    "fromUserId", sharerId,
                     "fromMe", false,
                     "timestamp", Instant.now().toString(),
                     "status", ChatMessageStatus.SENT.getValue()

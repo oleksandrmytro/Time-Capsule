@@ -2,17 +2,18 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/empty-state"
 import { UserCard, type UserData } from "./user-card"
-import { Grid3X3, List } from "lucide-react"
+import { Grid3X3, List, type LucideIcon } from "lucide-react"
 
 interface ProfileUsersGridProps {
   users: UserData[]
   heading: string
   subtitle?: string
-  emptyIcon: React.ComponentType<{ className?: string }>
+  emptyIcon: LucideIcon
   emptyTitle: string
   emptyDescription: string
   onFollow?: (userId: string) => Promise<void>
   onUnfollow?: (userId: string) => Promise<void>
+  currentUserId?: string
 }
 
 export function ProfileUsersGrid({
@@ -24,6 +25,7 @@ export function ProfileUsersGrid({
   emptyDescription,
   onFollow,
   onUnfollow,
+  currentUserId,
 }: ProfileUsersGridProps) {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
 
@@ -83,6 +85,7 @@ export function ProfileUsersGrid({
               onFollow={onFollow}
               onUnfollow={onUnfollow}
               layout="column"
+              currentUserId={currentUserId}
             />
           ))}
         </div>
@@ -97,6 +100,7 @@ export function ProfileUsersGrid({
               onFollow={onFollow}
               onUnfollow={onUnfollow}
               layout="row"
+              currentUserId={currentUserId}
             />
           ))}
         </div>

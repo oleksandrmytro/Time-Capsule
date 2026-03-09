@@ -56,13 +56,15 @@ public class JwtService {
     }
 
     /**
-     * Generate JWT token for user including basic claims (id, email, role) when available.
+     * Генерує JWT-токен для користувача.
+     * Subject (sub) = userId — унікальний ідентифікатор користувача в MongoDB.
+     * Додаткові claims: email, username, role.
      */
     public String generateToken(UserDetails userDetails) {
         Map<String, Object> extra = new HashMap<>();
         if (userDetails instanceof com.oleksandrmytro.timecapsule.models.User u) {
-            extra.put("id", u.getId());
-            extra.put("email", u.getEmail());
+            extra.put("email", u.getEmail());       // email як додатковий claim (НЕ subject)
+            extra.put("username", u.getUsernameField()); // реальний username
             extra.put("role", u.getRoleDb());
         }
         return generateToken(extra, userDetails);
@@ -78,8 +80,8 @@ public class JwtService {
     public String generateRefreshToken(UserDetails userDetails) {
         Map<String, Object> extra = new HashMap<>();
         if (userDetails instanceof com.oleksandrmytro.timecapsule.models.User u) {
-            extra.put("id", u.getId());
             extra.put("email", u.getEmail());
+            extra.put("username", u.getUsernameField());
             extra.put("role", u.getRoleDb());
             extra.put("token_type", "refresh");
             extra.put("kid", secretVersion);

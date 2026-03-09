@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { MediaGallery } from "@/components/media/media-gallery"
 import { ShareCapsuleDialog } from "@/components/capsules/share-capsule-dialog"
+import { ReactionButtons } from "@/components/capsules/reaction-buttons"
+import { CommentsSection } from "@/components/capsules/comments-section"
 import { ArrowLeft, Calendar, Clock, Copy, CheckCircle2, MessageSquare, Heart, Lock, Unlock, Share2 } from "lucide-react"
 import type { Capsule, ApiError } from "@/services/api"
 import type { UserData } from "@/components/users/user-card"
@@ -17,9 +19,11 @@ interface CapsuleDetailProps {
   onUnlock: (id: string) => Promise<void>
   error: ApiError | null
   onRefreshFollowing?: () => void
+  isAuthenticated?: boolean
+  currentUserId?: string
 }
 
-export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onRefreshFollowing }: CapsuleDetailProps) {
+export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onRefreshFollowing, isAuthenticated = false, currentUserId }: CapsuleDetailProps) {
   const [copied, setCopied] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
   const [showUnlockAnimation, setShowUnlockAnimation] = useState(false)
@@ -28,6 +32,7 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
   const hasShownUnlockAnimation = useRef(!capsule.isLocked)
   const prevLocked = useRef(capsule.isLocked)
   const navigate = useNavigate()
+  const canShare = isAuthenticated && (capsule.visibility === "public" || !!capsule.shareToken)
 
   useEffect(() => {
     hasShownUnlockAnimation.current = !capsule.isLocked
@@ -100,7 +105,7 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1.5 text-muted-foreground -ml-3"><ArrowLeft className="h-4 w-4" /> Back</Button>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShareOpen(true)}>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => canShare && setShareOpen(true)} disabled={!canShare} title={canShare ? "Share this capsule" : "Увійдіть, щоб поділитися"}>
               <Share2 className="h-3.5 w-3.5" /> Share
             </Button>
             <Button variant="outline" size="sm" onClick={() => { const url = `${window.location.origin}/capsules/${capsule.id}`; navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }}>
@@ -175,6 +180,20 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
                 </div>
               )}
               <Separator />
+              {/* Реакції та коментарі — тільки для публічних відкритих капсул */}
+              {capsule.visibility === "public" && (
+                <div className="flex flex-col gap-6 p-6 sm:p-8">
+                  {capsule.allowReactions !== false && (
+                    <ReactionButtons capsuleId={capsule.id} isAuthenticated={isAuthenticated} />
+                  )}
+                  {capsule.allowComments !== false && (
+                    <>
+                      <Separator />
+                      <CommentsSection capsuleId={capsule.id} isAuthenticated={isAuthenticated} currentUserId={currentUserId} />
+                    </>
+                  )}
+                </div>
+              )}
             </>
           )}
           <div className="grid gap-4 p-6 sm:grid-cols-2 sm:p-8">

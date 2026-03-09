@@ -10,6 +10,7 @@ var chatMessageSchema = {
     type: { enum: ["text", "capsule_share"] },
     capsuleId: { bsonType: ["objectId", "null"] },
     capsuleTitle: { bsonType: ["string", "null"] },
+    replyToMessageId: { bsonType: ["objectId", "null"] }, // ID повідомлення, на яке це є відповіддю
     status: { bsonType: ["string", "null"] },
     createdAt: { bsonType: "date" },
     deletedAt: { bsonType: ["date", "null"] }

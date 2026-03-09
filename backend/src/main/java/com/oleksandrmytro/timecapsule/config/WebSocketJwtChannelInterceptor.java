@@ -6,6 +6,7 @@ import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Map;
 
 // WebSocketJwtChannelInterceptor — це Spring-компонент, який реалізує ChannelInterceptor для обробки JWT-токенів у WebSocket-з'єднаннях.
 @Component
@@ -30,44 +32,67 @@ public class WebSocketJwtChannelInterceptor implements ChannelInterceptor {
     // preSend — це метод, який виконується перед відправкою повідомлення через WebSocket. Він перевіряє наявність JWT-токена в заголовках повідомлення
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
-        StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);           // Створюємо обгортку для зручного доступу до заголовків STOMP, wrap - це статичний метод, який приймає повідомлення і повертає об'єкт StompHeaderAccessor, що дозволяє легко читати та змінювати заголовки STOMP.
+        // ВАЖЛИВО: використовуємо getAccessor() замість wrap(), бо wrap() створює immutable копію
+        // і setUser() не пропагується — Spring не бачить principal, convertAndSendToUser не працює
+        StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+        if (accessor == null) return message;
         if (StompCommand.CONNECT.equals(accessor.getCommand()) || StompCommand.SEND.equals(accessor.getCommand()) || StompCommand.SUBSCRIBE.equals(accessor.getCommand())) { // Перевіряємо, чи це команда CONNECT, SEND або SUBSCRIBE, оскільки саме в цих командах нам потрібно аутентифікувати користувача.
+            // Шукаємо JWT - спочатку в STOMP header, потім в кукі, потім в атрибутах сесії WebSocket
             String bearer = resolveBearer(accessor);
             if (bearer != null && bearer.startsWith("Bearer ")) {
-                String jwt = bearer.substring(7);           // Витягуємо JWT-токен, видаляючи префікс "Bearer ".
-                String username = jwtService.extractUsername(jwt);          // Використовуємо JwtService для отримання імені користувача з токена.
-                if (username != null) {
-                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                String jwt = bearer.substring(7);
+                // extractUsername повертає subject з JWT — тепер це userId
+                String userId = jwtService.extractUsername(jwt);
+                if (userId != null) {
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(userId);
                     if (jwtService.isTokenValid(jwt, userDetails)) {
-                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                        SecurityContextHolder.getContext().setAuthentication(auth);         // Встановлюємо аутентифікацію в SecurityContext, щоб вона була доступна в поточному контексті безпеки.
-                        accessor.setUser(auth);         // Встановлюємо аутентифікацію в заголовках STOMP, щоб вона була доступна для подальшої обробки повідомлень.
+                        // getUsername() тепер повертає userId, тому principalName = userId завжди
+                        // convertAndSendToUser(peerId, ...) знайде з'єднання де principal.getName() == peerId
+                        String principalName = userDetails.getUsername(); // = userId
+                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(principalName, null, userDetails.getAuthorities());
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                        accessor.setUser(auth);
+                    } else {
+                        System.out.println("[WS-AUTH] invalid JWT for userId=" + userId);
                     }
+                } else {
+                    System.out.println("[WS-AUTH] userId null from JWT");
                 }
+            } else {
+                System.out.println("[WS-AUTH] bearer missing for command=" + accessor.getCommand());
             }
         }
         return message;
     }
 
-    // resolveBearer — це допоміжний метод, який шукає JWT-токен у заголовках "Authorization
+    // resolveBearer — шукає JWT-токен у: 1) STOMP header Authorization, 2) STOMP header cookie, 3) WebSocket session attributes (з HTTP handshake cookie)
     private String resolveBearer(StompHeaderAccessor accessor) {
-        List<String> authHeaders = accessor.getNativeHeader("Authorization");           // Отримуємо заголовки "Authorization
-        if (authHeaders != null && !authHeaders.isEmpty() && StringUtils.hasText(authHeaders.get(0))) {         // Якщо заголовки "Authorization" присутні і не порожні, повертаємо перший заголовок.
+        // 1. STOMP header "Authorization"
+        List<String> authHeaders = accessor.getNativeHeader("Authorization");
+        if (authHeaders != null && !authHeaders.isEmpty() && StringUtils.hasText(authHeaders.get(0))) {
             return authHeaders.get(0);
         }
-        List<String> cookies = accessor.getNativeHeader("cookie");          // Якщо заголовки "Authorization" відсутні, шукаємо заголовки "cookie", оскільки JWT-токен може бути переданий через cookie.
+        // 2. STOMP header "cookie" (якщо клієнт передає cookie як STOMP native header)
+        List<String> cookies = accessor.getNativeHeader("cookie");
         if (cookies != null) {
             for (String c : cookies) {
                 for (String cookie : c.split(";")) {
-                    String trimmed = cookie.trim();         // Розділяємо cookie по ";", оскільки в одному заголовку "cookie" може бути декілька cookie, та перевіряємо кожен на наявність "accessToken=".
+                    String trimmed = cookie.trim();
                     if (trimmed.startsWith("accessToken=")) {
-                        String token = trimmed.substring("accessToken=".length());          // Якщо знайдено cookie з назвою "accessToken", витягуємо токен і повертаємо його
+                        String token = trimmed.substring("accessToken=".length());
                         return "Bearer " + token;
                     }
                 }
             }
         }
+        // 3. WebSocket session attributes (токен витягнутий з HTTP cookie при handshake через CookieHandshakeInterceptor)
+        Map<String, Object> sessionAttributes = accessor.getSessionAttributes();
+        if (sessionAttributes != null) {
+            Object token = sessionAttributes.get(CookieHandshakeInterceptor.WS_ACCESS_TOKEN_ATTR);
+            if (token instanceof String t && StringUtils.hasText(t)) {
+                return "Bearer " + t;
+            }
+        }
         return null;
     }
 }
-

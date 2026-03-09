@@ -13,9 +13,12 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final WebSocketJwtChannelInterceptor webSocketJwtChannelInterceptor;
+    private final CookieHandshakeInterceptor cookieHandshakeInterceptor;
 
-    public WebSocketConfig(WebSocketJwtChannelInterceptor webSocketJwtChannelInterceptor) {
+    public WebSocketConfig(WebSocketJwtChannelInterceptor webSocketJwtChannelInterceptor,
+                           CookieHandshakeInterceptor cookieHandshakeInterceptor) {
         this.webSocketJwtChannelInterceptor = webSocketJwtChannelInterceptor;
+        this.cookieHandshakeInterceptor = cookieHandshakeInterceptor;
     }
 
     @Override
@@ -28,7 +31,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOrigins("http://localhost", "http://localhost:5173")
+                // Дозволяємо локальні origin, включно з 127.0.0.1 та будь-якими портами (Vite/Next/nginx)
+                .setAllowedOriginPatterns("http://localhost*", "http://127.0.0.1*", "http://*.local*", "http://*.test*", "http://*.lan*")
+                .addInterceptors(cookieHandshakeInterceptor)
                 .withSockJS();
     }
 
@@ -37,4 +42,3 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registration.interceptors(webSocketJwtChannelInterceptor);
     }
 }
-

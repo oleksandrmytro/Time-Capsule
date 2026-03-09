@@ -16,9 +16,10 @@ interface FollowersListProps {
   onLoadMoreFollowing?: () => Promise<void>
   hasMoreFollowers?: boolean
   hasMoreFollowing?: boolean
+  currentUserId?: string
 }
 
-export function FollowersList({ followers, following, followersCount, followingCount, onFollow, onUnfollow, onLoadMoreFollowers, onLoadMoreFollowing, hasMoreFollowers = false, hasMoreFollowing = false }: FollowersListProps) {
+export function FollowersList({ followers, following, followersCount, followingCount, onFollow, onUnfollow, onLoadMoreFollowers, onLoadMoreFollowing, hasMoreFollowers = false, hasMoreFollowing = false, currentUserId }: FollowersListProps) {
   const [loadingFollowers, setLoadingFollowers] = useState(false)
   const [loadingFollowing, setLoadingFollowing] = useState(false)
 
@@ -35,8 +36,8 @@ export function FollowersList({ followers, following, followersCount, followingC
         {followers.length === 0 ? (
           <EmptyState icon={Users} title="No followers yet" description="When people follow you, they'll appear here." />
         ) : (
-          <div className="flex flex-col gap-2">
-            {followers.map((user) => <UserCard key={user.id} user={user} showFollowButton showMessageButton onFollow={onFollow} onUnfollow={onUnfollow} />)}
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
+            {followers.map((user) => <UserCard key={user.id} user={user} showFollowButton showMessageButton onFollow={onFollow} onUnfollow={onUnfollow} currentUserId={currentUserId} />)}
             {hasMoreFollowers && <Button variant="outline" onClick={handleLoadMoreFollowers} disabled={loadingFollowers} className="mt-2">{loadingFollowers ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</> : "Load more"}</Button>}
           </div>
         )}
@@ -45,8 +46,8 @@ export function FollowersList({ followers, following, followersCount, followingC
         {following.length === 0 ? (
           <EmptyState icon={UserCheck} title="Not following anyone" description="When you follow people, they'll appear here." />
         ) : (
-          <div className="flex flex-col gap-2">
-            {following.map((user) => <UserCard key={user.id} user={user} showFollowButton showMessageButton onFollow={onFollow} onUnfollow={onUnfollow} />)}
+          <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
+            {following.map((user) => <UserCard key={user.id} user={user} showFollowButton showMessageButton onFollow={onFollow} onUnfollow={onUnfollow} currentUserId={currentUserId} />)}
             {hasMoreFollowing && <Button variant="outline" onClick={handleLoadMoreFollowing} disabled={loadingFollowing} className="mt-2">{loadingFollowing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading...</> : "Load more"}</Button>}
           </div>
         )}
@@ -54,4 +55,3 @@ export function FollowersList({ followers, following, followersCount, followingC
     </Tabs>
   )
 }
-

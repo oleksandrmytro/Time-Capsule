@@ -192,9 +192,12 @@ public class AuthenticationService {
 
     public LoginResponse refreshTokens(RefreshTokenRequest request) {
         String refreshToken = request.getRefreshToken();
-        String username = jwtService.extractUsername(refreshToken);
-        User user = userRepository.findByEmail(username)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        // extractUsername повертає subject з JWT — тепер це userId (раніше був email)
+        String subject = jwtService.extractUsername(refreshToken);
+        // Шукаємо по userId (новий формат), fallback на email (старі токени)
+        User user = userRepository.findById(subject)
+                .orElseGet(() -> userRepository.findByEmail(subject)
+                        .orElseThrow(() -> new IllegalArgumentException("User not found")));
 
         if (!jwtService.isRefreshTokenValid(refreshToken, user)) {
             log.warn("Refresh token rejected for userId={} email={}", user.getId(), user.getEmail());
@@ -206,9 +209,12 @@ public class AuthenticationService {
 
     public LoginResponse refreshWithRotationCheck(RefreshTokenRequest request) {
         String refreshToken = request.getRefreshToken();
-        String username = jwtService.extractUsername(refreshToken);
-        User user = userRepository.findByEmail(username)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        // extractUsername повертає subject з JWT — тепер це userId (раніше був email)
+        String subject = jwtService.extractUsername(refreshToken);
+        // Шукаємо по userId (новий формат), fallback на email (старі токени)
+        User user = userRepository.findById(subject)
+                .orElseGet(() -> userRepository.findByEmail(subject)
+                        .orElseThrow(() -> new IllegalArgumentException("User not found")));
 
         if (!jwtService.isRefreshTokenValid(refreshToken, user)) {
             log.warn("Refresh token rejected for userId={} email={}", user.getId(), user.getEmail());

@@ -27,17 +27,19 @@ export function CapsulesList({ capsules, isLoading, onSelect, onCreate, onBack }
         </div>
         <Button onClick={onCreate} className="gap-1.5"><Plus className="h-4 w-4" /> Create Capsule</Button>
       </div>
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[1,2,3,4,5,6].map((i) => (<div key={i} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5"><Skeleton className="h-5 w-24 rounded-full" /><Skeleton className="h-6 w-3/4" /><Skeleton className="h-10 w-full" /></div>))}
-        </div>
-      ) : capsules.length === 0 ? (
-        <EmptyState icon={Archive} title="No capsules yet" description="Create your first time capsule and start preserving memories." actionLabel="Create Capsule" onAction={onCreate} />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {capsules.map((c) => <CapsuleCard key={c.id} capsule={c} onClick={onSelect} />)}
-        </div>
-      )}
+      <div className="max-h-[70vh] overflow-y-auto pr-1">
+        {isLoading ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[1,2,3,4,5,6].map((i) => (<div key={i} className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5"><Skeleton className="h-5 w-24 rounded-full" /><Skeleton className="h-6 w-3/4" /><Skeleton className="h-10 w-full" /></div>))}
+          </div>
+        ) : capsules.length === 0 ? (
+          <EmptyState icon={Archive} title="No capsules yet" description="Create your first time capsule and start preserving memories." actionLabel="Create Capsule" onAction={onCreate} />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {capsules.map((c) => <CapsuleCard key={c.id} capsule={c} onClick={onSelect} />)}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

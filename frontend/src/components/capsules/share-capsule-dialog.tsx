@@ -58,7 +58,7 @@ export function ShareCapsuleDialog({
             <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input placeholder="Search followers..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" /></div>
             <ScrollArea className="h-[240px] pr-4">
               {filteredUsers.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 text-center"><p className="text-sm text-muted-foreground">{searchQuery ? "No followers found" : "У списку підписок нікого немає."}</p></div>
+                <div className="flex flex-col items-center justify-center py-8 text-center"><p className="text-sm text-muted-foreground">{searchQuery ? "No followers found" : "You don't follow anyone yet to share with."}</p></div>
               ) : (
                 <div className="flex flex-col gap-1">
                   {filteredUsers.map((user) => {

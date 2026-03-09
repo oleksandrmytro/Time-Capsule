@@ -34,6 +34,7 @@ interface UserProfileViewProps {
   capsules?: Capsule[]
   onFollow?: (userId: string) => Promise<void>
   onUnfollow?: (userId: string) => Promise<void>
+  currentUserId?: string
 }
 
 const formatDate = (dateString: string) =>
@@ -51,19 +52,22 @@ export function UserProfileView({
   capsules = [],
   onFollow,
   onUnfollow,
+  currentUserId,
 }: UserProfileViewProps) {
-  const [isFollowing, setIsFollowing] = useState(user.isFollowing ?? false)
+  const isSelfProfile = isOwnProfile || (currentUserId ? user.id === currentUserId : false)
+  const [isFollowing, setIsFollowing] = useState(isSelfProfile ? false : user.isFollowing ?? false)
   const [isLoading, setIsLoading] = useState(false)
   const [followersCount, setFollowersCount] = useState(user.followersCount ?? 0)
   const [activeTab, setActiveTab] = useState("capsules")
   const navigate = useNavigate()
 
   useEffect(() => {
-    setIsFollowing(user.isFollowing ?? false)
+    setIsFollowing(isSelfProfile ? false : user.isFollowing ?? false)
     setFollowersCount(user.followersCount ?? 0)
-  }, [user])
+  }, [user, isSelfProfile])
 
   const handleFollowToggle = async () => {
+    if (isSelfProfile) return
     setIsLoading(true)
     try {
       if (isFollowing) {
@@ -129,7 +133,7 @@ export function UserProfileView({
 
                 {/* Action buttons */}
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:gap-2">
-                  {!isOwnProfile && (
+                  {!isSelfProfile && (
                     <>
                       <Button
                         variant={isFollowing ? "outline" : "default"}
@@ -164,7 +168,7 @@ export function UserProfileView({
                     </>
                   )}
 
-                  {isOwnProfile && (
+                  {isSelfProfile && (
                     <Button
                       variant="outline"
                       onClick={() => navigate("/account/settings")}
@@ -287,12 +291,13 @@ export function UserProfileView({
                   emptyIcon={Users}
                   emptyTitle="No followers yet"
                   emptyDescription={
-                    isOwnProfile
+                    isSelfProfile
                       ? "When people follow you, they'll appear here."
                       : `@${user.username} doesn't have any followers yet.`
                   }
                   onFollow={handleFollow}
                   onUnfollow={handleUnfollow}
+                  currentUserId={currentUserId}
                 />
               </TabsContent>
 
@@ -305,12 +310,13 @@ export function UserProfileView({
                   emptyIcon={UserCheck}
                   emptyTitle="Not following anyone"
                   emptyDescription={
-                    isOwnProfile
+                    isSelfProfile
                       ? "When you follow people, they'll appear here."
                       : `@${user.username} isn't following anyone yet.`
                   }
                   onFollow={handleFollow}
                   onUnfollow={handleUnfollow}
+                  currentUserId={currentUserId}
                 />
               </TabsContent>
             </Tabs>

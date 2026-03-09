@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,6 +28,17 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   const [allowReactions, setAllowReactions] = useState(true)
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([])
   const navigate = useNavigate()
+
+  // Скидаємо коментарі/реакції на false, коли видимість не public
+  useEffect(() => {
+    if (visibility !== "public") {
+      setAllowComments(false)
+      setAllowReactions(false)
+    } else {
+      setAllowComments(true)
+      setAllowReactions(true)
+    }
+  }, [visibility])
 
   const error = parentError || localError
 
@@ -174,16 +185,18 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
             )}
           </div>
 
-          <div className="flex flex-col gap-4 rounded-xl border border-border bg-secondary/30 p-4">
-            <div className="flex items-center justify-between">
-              <div><p className="text-sm font-medium text-foreground">Allow Comments</p><p className="text-xs text-muted-foreground">Let others comment on your capsule</p></div>
-              <Switch checked={allowComments} onCheckedChange={setAllowComments} />
+          {visibility === "public" && (
+            <div className="flex flex-col gap-4 rounded-xl border border-border bg-secondary/30 p-4">
+              <div className="flex items-center justify-between">
+                <div><p className="text-sm font-medium text-foreground">Allow Comments</p><p className="text-xs text-muted-foreground">Let others comment on your capsule</p></div>
+                <Switch checked={allowComments} onCheckedChange={setAllowComments} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div><p className="text-sm font-medium text-foreground">Allow Reactions</p><p className="text-xs text-muted-foreground">Let others react to your capsule</p></div>
+                <Switch checked={allowReactions} onCheckedChange={setAllowReactions} />
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <div><p className="text-sm font-medium text-foreground">Allow Reactions</p><p className="text-xs text-muted-foreground">Let others react to your capsule</p></div>
-              <Switch checked={allowReactions} onCheckedChange={setAllowReactions} />
-            </div>
-          </div>
+          )}
 
           <Button type="submit" className="h-12 w-full text-sm font-semibold" disabled={isLoading}>
             {isLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating capsule...</> : "Create Capsule"}

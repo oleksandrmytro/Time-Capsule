@@ -30,6 +30,7 @@ export interface ChatWsMessage {
   status?: string
   capsuleId?: string
   capsuleTitle?: string
+  replyToMessageId?: string | null
 }
 
 let chatCallbacks: ChatStreamCallbacks = {}
@@ -41,7 +42,8 @@ export function setChatCallbacks(cb: ChatStreamCallbacks): void {
 export function connectCapsuleStream({ onEvent, onError }: CapsuleStreamCallbacks): void {
   if (client) return
   client = new Client({
-    webSocketFactory: () => new SockJS(getWsUrl()),
+    webSocketFactory: () => new SockJS(getWsUrl(), undefined, { withCredentials: true } as any),
+    // withCredentials: true - браузер надсилає кукі при HTTP Upgrade request(тобто при встановленні WebSocket з'єднання)
     connectHeaders: {},
     reconnectDelay: 5000,
     heartbeatIncoming: 10000,
@@ -49,6 +51,7 @@ export function connectCapsuleStream({ onEvent, onError }: CapsuleStreamCallback
     debug: () => {},
     onConnect: () => {
       connected = true
+      // Підписуємося на оновлення капсул для поточного користувача
       capsuleSub = client!.subscribe('/user/queue/capsules/status', (msg: IMessage) => {
         try {
           const body = JSON.parse(msg.body)
@@ -57,6 +60,7 @@ export function connectCapsuleStream({ onEvent, onError }: CapsuleStreamCallback
           console.error('WS parse error', e)
         }
       })
+      // Підписуємося на оновлення чатів для поточного користувача
       chatSub = client!.subscribe('/user/queue/chat', (msg: IMessage) => {
         try {
           const body = JSON.parse(msg.body) as ChatWsMessage
@@ -73,7 +77,7 @@ export function connectCapsuleStream({ onEvent, onError }: CapsuleStreamCallback
       onError?.(event?.message || 'WebSocket error')
     },
   })
-  client.activate()
+  client.activate() // Запускаємо з`єднання
 }
 
 export function disconnectCapsuleStream(): void {

@@ -24,10 +24,23 @@ public class ApplicationConfiguration {
         this.userRepository = userRepository;
     }
 
+    /**
+     * UserDetailsService — завантажує користувача з бази за ідентифікатором.
+     *
+     * Раніше JWT зберігав email як subject, тому тут шукали по email.
+     * Тепер JWT зберігає userId як subject — шукаємо по userId (MongoDB _id).
+     * Fallback на email залишено для старих токенів (наприклад, якщо хтось ще має старий токен).
+     */
     @Bean
     UserDetailsService userDetailsService() {
-        return username -> userRepository.findByEmail(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        return userId -> {
+            // Спочатку шукаємо по userId (новий формат JWT, subject = userId)
+            var byId = userRepository.findById(userId);
+            if (byId.isPresent()) return byId.get();
+            // Fallback: шукаємо по email (старі токени де subject = email)
+            return userRepository.findByEmail(userId)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + userId));
+        };
     }
 
     @Bean

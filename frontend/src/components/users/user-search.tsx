@@ -5,7 +5,11 @@ import { EmptyState } from "@/components/empty-state"
 import { Search, Loader2, Users, AlertTriangle } from "lucide-react"
 import { searchUsers, followUser, unfollowUser } from "@/services/api"
 
-export function UserSearch() {
+interface UserSearchProps {
+  currentUserId?: string
+}
+
+export function UserSearch({ currentUserId }: UserSearchProps) {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<UserData[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -47,6 +51,8 @@ export function UserSearch() {
     } catch {}
   }
 
+  const visibleResults = currentUserId ? results.filter(u => u.id !== currentUserId) : results
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 lg:px-8">
       <h1 className="mb-6 font-serif text-3xl font-bold tracking-tight text-foreground">Search Users</h1>
@@ -71,18 +77,17 @@ export function UserSearch() {
               <h3 className="font-medium text-foreground">Search Unavailable</h3>
               <p className="mt-1 max-w-xs text-sm text-muted-foreground">{searchError}</p>
             </div>
-          ) : results.length === 0 ? (
+          ) : visibleResults.length === 0 ? (
             <EmptyState icon={Search} title="No users found" description={`No users match "${query}". Try a different search term.`} />
           ) : (
-            <>
-              <p className="text-sm text-muted-foreground">{results.length} user{results.length !== 1 ? "s" : ""} found</p>
-              {results.map((user) => <UserCard key={user.id} user={user} showFollowButton showMessageButton onFollow={handleFollow} onUnfollow={handleUnfollow} size="lg" />)}
-            </>
+            <div className="flex flex-col gap-2 max-h-[70vh] overflow-y-auto pr-1">
+              <p className="text-sm text-muted-foreground">{visibleResults.length} user{visibleResults.length !== 1 ? "s" : ""} found</p>
+              {visibleResults.map((user) => <UserCard key={user.id} user={user} showFollowButton showMessageButton onFollow={handleFollow} onUnfollow={handleUnfollow} size="lg" currentUserId={currentUserId} />)}
+            </div>
           )}
         </div>
       </div>
     </div>
   )
 }
-
 

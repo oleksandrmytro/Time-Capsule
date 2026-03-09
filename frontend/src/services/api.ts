@@ -43,6 +43,9 @@ export interface UserPublic {
   bio?: string
   isFollowing?: boolean
   isOnline?: boolean
+  followersCount?: number
+  followingCount?: number
+  capsulesCount?: number
 }
 
 export interface ChatConversation {
@@ -71,6 +74,7 @@ export interface ChatMessage {
   type?: 'text' | 'capsule_share'
   capsuleId?: string | null
   capsuleTitle?: string | null
+  replyToMessageId?: string | null
 }
 
 export interface MediaItem {
@@ -271,14 +275,67 @@ export async function getChatMessages(userId: string): Promise<ChatMessage[]> {
   return apiRequest(`/api/chat/${userId}/messages`, { method: 'GET' })
 }
 
-export async function sendChatMessage(userId: string, text: string): Promise<ChatMessage> {
-  return apiRequest(`/api/chat/${userId}/messages`, { method: 'POST', body: { text } })
+export async function sendChatMessage(userId: string, text: string, replyToMessageId?: string | null): Promise<ChatMessage> {
+  return apiRequest(`/api/chat/${userId}/messages`, { method: 'POST', body: { text, replyToMessageId: replyToMessageId || null } })
 }
 
 /* ── Share API ─────────────────────────── */
 
 export async function shareCapsule(capsuleId: string, userIds: string[]): Promise<void> {
   return apiRequest(`/api/capsules/${capsuleId}/share`, { method: 'POST', body: { userIds } })
+}
+
+/* ── Comment & Reaction Types ──────────── */
+
+export interface CommentData {
+  id: string
+  capsuleId: string
+  userId: string
+  username: string
+  avatarUrl?: string
+  body: string
+  parentCommentId?: string | null
+  replies?: CommentData[]
+  createdAt: string
+}
+
+export interface ReactionSummary {
+  counts: Record<string, number>
+  userReactions: string[]
+}
+
+/* ── Comment API ───────────────────────── */
+
+// Повертає коментарі для капсули
+export async function getComments(capsuleId: string): Promise<CommentData[]> {
+  return apiRequest(`/api/capsules/${capsuleId}/comments`, { method: 'GET' })
+}
+
+// Додає коментар до капсули (parentCommentId для відповідей)
+export async function addComment(capsuleId: string, body: string, parentCommentId?: string | null): Promise<CommentData> {
+  return apiRequest(`/api/capsules/${capsuleId}/comments`, { method: 'POST', body: { body, parentCommentId: parentCommentId || null } })
+}
+
+// Видаляє коментар (soft delete)
+export async function deleteComment(capsuleId: string, commentId: string): Promise<void> {
+  return apiRequest(`/api/capsules/${capsuleId}/comments/${commentId}`, { method: 'DELETE' })
+}
+
+// Оновлює текст коментаря
+export async function updateComment(capsuleId: string, commentId: string, body: string): Promise<CommentData> {
+  return apiRequest(`/api/capsules/${capsuleId}/comments/${commentId}`, { method: 'PATCH', body: { body } })
+}
+
+/* ── Reaction API ──────────────────────── */
+
+// Повертає підсумок реакцій для капсули
+export async function getReactionSummary(capsuleId: string): Promise<ReactionSummary> {
+  return apiRequest(`/api/capsules/${capsuleId}/reactions`, { method: 'GET' })
+}
+
+// Перемикає реакцію (додає або знімає)
+export async function toggleReaction(capsuleId: string, type: string): Promise<ReactionSummary> {
+  return apiRequest(`/api/capsules/${capsuleId}/reactions`, { method: 'POST', body: { type } })
 }
 
 export { getApiBase }

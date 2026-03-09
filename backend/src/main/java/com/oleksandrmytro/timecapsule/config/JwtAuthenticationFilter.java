@@ -45,12 +45,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
+        // Шукаємо токен в Authorization header.
         final String authHeader = request.getHeader("Authorization");
+        // bearer - означає предявний, тобто той, хто його має, отримує доступ
         String bearer = authHeader;
 
-        // Fallback to cookie-based auth if no header
+        // Якщо немає Authorization header, шукаємо в cookie з імям "accessToken"
         if (bearer == null) {
-            String cookieJwt = extractCookie(request, "accessToken");
+            String cookieJwt = extractCookie(request, "accessToken"); // читає кукі
             if (StringUtils.hasText(cookieJwt)) {
                 bearer = "Bearer " + cookieJwt;
             }
@@ -62,30 +64,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         /*
-        What criteria an incoming request must match before being forwarded to the application middleware:
-        1. The request url path has to match /auth/signup and /auth/login
-        2. Every request must be treated like the new one, no session should be created or used.
-        3. Must use custom authentication provider (JwtAuthenticationProvider).
-        4. Must be executed before the application middleware (UsernamePasswordAuthenticationFilter).
-        5. The cors configuration will only allow POST and GET requests.
+        Які критерії має відповідати вхідний запит, щоб бути переданим у middleware додатку:
+        1. URL запиту має відповідати /auth/signup або /auth/login
+        2. Кожен запит має оброблятися як новий, не повинна створюватися або використовуватися сесія.
+        3. Має використовуватися кастомний authentication provider (JwtAuthenticationProvider).
+        4. Має виконуватися перед middleware додатку (UsernamePasswordAuthenticationFilter).
+        5. CORS-конфігурація дозволяє лише POST та GET запити.
          */
 
         try {
+            // Витягуємо subject з JWT — тепер це userId (раніше був email)
             final String jwt = bearer.substring(7);
-            final String userEmail = jwtService.extractUsername(jwt);
-            if (userEmail != null) {
+            final String userId = jwtService.extractUsername(jwt);
+            if (userId != null) {
                 UserDetails userDetails;
                 try {
-                    userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+                    // Завантажуємо користувача з бази за userId (ApplicationConfiguration шукає по findById)
+                    userDetails = this.userDetailsService.loadUserByUsername(userId);
                 } catch (UsernameNotFoundException e) {
                     // Treat missing user as anonymous and continue without failing the request
                     filterChain.doFilter(request, response);
                     return;
                 }
-
+                // Перевіряємо що JWT валідний та не expired
                 if (jwtService.isTokenValid(jwt, userDetails)) {
+                    // Створюємо Authentication з principal = User об'єкт
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            userDetails,
+                            userDetails,    // principal — це UserDetails, який містить інформацію про користувача
                             null,
                             userDetails.getAuthorities()
                     );

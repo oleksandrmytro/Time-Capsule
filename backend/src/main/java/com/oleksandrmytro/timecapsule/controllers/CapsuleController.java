@@ -54,8 +54,8 @@ public class CapsuleController {
 
     @PostMapping("/{id}/share")
     public ResponseEntity<Void> share(@PathVariable String id, @RequestBody ShareCapsuleRequest req, Authentication auth) {
-        String ownerId = currentUserId(auth);
-        capsuleService.shareCapsule(id, ownerId, req != null ? req.getUserIds() : null);
+        String sharerId = currentUserId(auth);
+        capsuleService.shareCapsule(id, sharerId, req != null ? req.getUserIds() : null);
         return ResponseEntity.ok().build();
     }
 

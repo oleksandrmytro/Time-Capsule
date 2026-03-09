@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom'
 import './App.css'
 import Header from './components/Header'
@@ -217,14 +217,42 @@ function App() {
   }, [location.pathname, selectedCapsule?.id])
 
   // --- WebSocket ---
+  // Зберігаємо selectedCapsule у ref щоб мати доступ до актуального значення
+  // всередині WS-колбеку без перепідключення при кожному виборі іншої капсули.
+  const selectedCapsuleRef = useRef(selectedCapsule)
+  useEffect(() => { selectedCapsuleRef.current = selectedCapsule }, [selectedCapsule])
+
+  // WS-з'єднання потрібне на сторінках де є реальний час:
+  // - /capsules — автовідкриття капсул (CapsuleUnlockScheduler)
+  // - /chat     — отримання повідомлень у реальному часі
+  // При виході з цих сторінок — з'єднання закривається.
+  const wsNeeded = isAuthenticated && (
+    location.pathname === '/capsules' ||
+    location.pathname.startsWith('/chat')
+  )
+
   useEffect(() => {
-    if (!isAuthenticated) return
+    if (!wsNeeded) return
+
+    // connectCapsuleStream створює SockJS → STOMP CONNECT →
+    // підписка на /user/queue/capsules/status (капсули) та /user/queue/chat (чат)
+    // onEvent — функція яка НЕ виконується одразу, а лише коли прийде WS-повідомлення
     connectCapsuleStream({
-      onEvent: () => { loadCapsules() },
+      onEvent: (body: unknown) => {
+        // Викликається коли CapsuleUnlockScheduler надішле WS-подію про відкриття капсули
+        loadCapsules()
+        // Якщо користувач зараз переглядає саме цю капсулу — оновлюємо і її деталі
+        const event = body as { id?: string } | null
+        const current = selectedCapsuleRef.current
+        if (event?.id && current?.id === event.id) {
+          getCapsule(event.id).then(setSelectedCapsule).catch(() => {})
+        }
+      },
       onError: (msg) => console.warn('WS error:', msg),
     })
+    // При виході зі сторінок де потрібен WS — закриваємо з'єднання
     return () => disconnectCapsuleStream()
-  }, [isAuthenticated, loadCapsules])
+  }, [wsNeeded, loadCapsules])
 
   // --- Load capsules when navigating to /capsules or /account ---
   useEffect(() => {
@@ -311,42 +339,44 @@ function App() {
           } />
 
           <Route path="/capsules/:id" element={
-            selectedCapsule ? (
-              <CapsuleDetail
-                capsule={selectedCapsule}
-                following={following}
-                onBack={async () => {
-                  const fromState = (location.state as { from?: string } | null)?.from
-                  const backTarget = fromState || '/capsules'
-                  if (backTarget === '/capsules') {
-                    await loadCapsules()
-                  }
-                  navigate(backTarget, { replace: true })
-                }}
-                onUnlock={handleUnlockCapsule}
-                error={error}
-                onRefreshFollowing={() => profile?.id && loadFollowing(profile.id)}
-              />
-            ) : error ? (
-              <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
-                <div className="w-full max-w-3xl">
-                  <EmptyState
-                    icon={ShieldOff}
-                    title={error?.status === 403 ? 'You don’t have access to this capsule' : 'Capsule not found'}
-                    description={error?.status === 403
-                      ? 'Ask the owner to share access with you or send you a fresh invite link.'
-                      : 'The link might be outdated or the capsule was removed. Please check the URL or contact the owner.'}
-                    actionLabel="Back to capsules"
-                    onAction={() => navigate((location.state as any)?.from || '/capsules')}
-                  />
-                </div>
-              </div>
+             selectedCapsule ? (
+               <CapsuleDetail
+                 capsule={selectedCapsule}
+                 following={following}
+                 onBack={async () => {
+                   const fromState = (location.state as { from?: string } | null)?.from
+                   const backTarget = fromState || '/capsules'
+                   if (backTarget === '/capsules') {
+                     await loadCapsules()
+                   }
+                   navigate(backTarget, { replace: true })
+                 }}
+                 onUnlock={handleUnlockCapsule}
+                 error={error}
+                 onRefreshFollowing={() => profile?.id && loadFollowing(profile.id)}
+                 isAuthenticated={isAuthenticated}
+                 currentUserId={profile?.id}
+               />
+             ) : error ? (
+               <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
+                 <div className="w-full max-w-3xl">
+                   <EmptyState
+                     icon={ShieldOff}
+                     title={error?.status === 403 ? 'You don’t have access to this capsule' : 'Capsule not found'}
+                     description={error?.status === 403
+                       ? 'Ask the owner to share access with you or send you a fresh invite link.'
+                       : 'The link might be outdated or the capsule was removed. Please check the URL or contact the owner.'}
+                     actionLabel="Back to capsules"
+                     onAction={() => navigate((location.state as any)?.from || '/capsules')}
+                   />
+                 </div>
+               </div>
              ) : (
                <div className="mx-auto max-w-2xl px-4 py-10 text-center text-sm text-muted-foreground">Завантаження капсули...</div>
              )
           } />
 
-          <Route path="/search" element={<UserSearch />} />
+          <Route path="/search" element={<UserSearch currentUserId={profile?.id} />} />
 
           <Route path="/profile/:username" element={<ProfileRoute currentUserId={profile?.id} />} />
 
@@ -406,6 +436,9 @@ function ProfileRoute({ currentUserId }: { currentUserId?: string }) {
     bio: u.bio,
     isFollowing: u.isFollowing,
     isOnline: u.isOnline,
+    followersCount: u.followersCount,
+    followingCount: u.followingCount,
+    capsulesCount: u.capsulesCount,
   })
 
   return (
@@ -416,6 +449,7 @@ function ProfileRoute({ currentUserId }: { currentUserId?: string }) {
       followers={profileFollowers.map(mapToUserData)}
       following={profileFollowing.map(mapToUserData)}
       capsules={profileCapsules}
+      currentUserId={currentUserId}
     />
   )
 }
@@ -441,6 +475,9 @@ function AccountProfileRoute({ profile, capsules, onLoadCapsules }: { profile: U
     bio: u.bio,
     isFollowing: u.isFollowing,
     isOnline: u.isOnline,
+    followersCount: u.followersCount,
+    followingCount: u.followingCount,
+    capsulesCount: u.capsulesCount,
   })
 
   return (
@@ -451,6 +488,7 @@ function AccountProfileRoute({ profile, capsules, onLoadCapsules }: { profile: U
       followers={accountFollowers.map(mapToUserData)}
       following={accountFollowing.map(mapToUserData)}
       capsules={capsules}
+      currentUserId={profile.id}
     />
   )
 }

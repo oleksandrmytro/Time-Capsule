@@ -6,6 +6,7 @@ var commentSchema = {
     _id: { bsonType: "objectId" },
     capsuleId: { bsonType: "objectId" },
     userId: { bsonType: "objectId" },
+    parentCommentId: { bsonType: ["objectId", "null"] },
     body: { bsonType: "string" },
     createdAt: { bsonType: "date" },
     updatedAt: { bsonType: "date" },

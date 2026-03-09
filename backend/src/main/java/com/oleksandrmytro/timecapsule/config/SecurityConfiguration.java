@@ -95,7 +95,11 @@ public class SecurityConfiguration {
                 .formLogin(AbstractHttpConfigurer::disable)             // Вимикає стандартний form login (бо API не використовує форми)
                 .httpBasic(AbstractHttpConfigurer::disable)             // Вимикає http basic auth (бо використовується JWT)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/api/hello").permitAll()          // Вимикає http basic auth (бо використовується JWT)
+                        .requestMatchers("/api/auth/**", "/api/hello").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/capsules/*/comments").permitAll()    // Публічний перегляд коментарів
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/capsules/*/reactions").permitAll()   // Публічний перегляд реакцій
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/capsules/*").permitAll()             // Публічний перегляд капсул
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/users/**").permitAll()               // Публічний перегляд профілів
                         .anyRequest().authenticated()               // Всі інші запити — тільки для авторизованих користувачів
                 )
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))            // Якщо не авторизований — повертає 401

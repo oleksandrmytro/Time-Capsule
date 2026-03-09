@@ -35,6 +35,9 @@ public class ChatMessage {
     @Field("capsuleTitle")
     private String capsuleTitle;
 
+    @Field("replyToMessageId")
+    private ObjectId replyToMessageId;   // ID повідомлення, на яке це є відповіддю
+
     @Field("createdAt")
     @Indexed
     private Instant createdAt = Instant.now();
@@ -69,6 +72,8 @@ public class ChatMessage {
     public void setCapsuleId(ObjectId capsuleId) { this.capsuleId = capsuleId; }
     public String getCapsuleTitle() { return capsuleTitle; }
     public void setCapsuleTitle(String capsuleTitle) { this.capsuleTitle = capsuleTitle; }
+    public ObjectId getReplyToMessageId() { return replyToMessageId; }
+    public void setReplyToMessageId(ObjectId replyToMessageId) { this.replyToMessageId = replyToMessageId; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public String getStatus() { return status; }
