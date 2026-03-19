@@ -79,6 +79,7 @@ public class CapsuleService {
         capsule.setAllowComments(request.getAllowComments() != null ? request.getAllowComments() : true);
         capsule.setAllowReactions(request.getAllowReactions() != null ? request.getAllowReactions() : true);
         capsule.setTags(request.getTags());
+        capsule.setCoverImageUrl(request.getCoverImageUrl());
         capsule.setMedia(mapMediaRequest(request.getMedia()));
 
         // Only set location if provided
@@ -374,6 +375,7 @@ public class CapsuleService {
         resp.setAllowReactions(capsule.getAllowReactions());
         resp.setShareToken(capsule.getShareToken());
         resp.setTags(capsule.getTags());
+        resp.setCoverImageUrl(capsule.getCoverImageUrl());
         resp.setLocation(mapGeo(capsule.getLocation()));
         resp.setCreatedAt(capsule.getCreatedAt());
         resp.setUpdatedAt(capsule.getUpdatedAt());
@@ -384,6 +386,7 @@ public class CapsuleService {
         if (media == null) return null;
         return media.stream().map(m -> {
             CapsuleResponse.Media rm = new CapsuleResponse.Media();
+            rm.setId(m.getId() != null ? m.getId() : m.getUrl());
             rm.setUrl(m.getUrl());
             rm.setType(m.getType());
             rm.setMeta(m.getMeta());
@@ -395,6 +398,7 @@ public class CapsuleService {
         if (media == null) return null;
         return media.stream().map(m -> {
             Capsule.Media cm = new Capsule.Media();
+            cm.setId(m.getId() != null ? m.getId() : m.getUrl());
             cm.setUrl(m.getUrl());
             cm.setType(m.getType());
             cm.setMeta(m.getMeta());
@@ -421,6 +425,22 @@ public class CapsuleService {
     private boolean isLocked(String status, Instant unlockAt) {
         CapsuleStatus st = CapsuleStatus.fromValue(status);
         return CapsuleStatus.SEALED.equals(st) && unlockAt != null && Instant.now().isBefore(unlockAt);
+    }
+
+    /**
+     * Повертає капсули користувача з unlockAt у заданому діапазоні дат (для календаря).
+     */
+    public List<CapsuleResponse> listByDateRange(String ownerId, Instant from, Instant to) {
+        ObjectId owner = new ObjectId(ownerId);
+        Query query = new Query(
+                Criteria.where("ownerId").is(owner)
+                        .and("deletedAt").is(null)
+                        .and("unlockAt").gte(from).lte(to)
+        );
+        return mongoTemplate.find(query, Capsule.class)
+                .stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
     }
 
     /**

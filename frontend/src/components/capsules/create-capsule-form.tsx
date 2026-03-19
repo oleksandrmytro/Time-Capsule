@@ -8,11 +8,14 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertBanner } from "@/components/alert-banner"
 import { MediaUploader, type MediaFile } from "@/components/media/media-uploader"
-import { Loader2, Lock, Globe, Link2, X, ArrowLeft } from "lucide-react"
-import type { CreateCapsulePayload, ApiError } from "@/services/api"
+import { TagPicker } from "@/components/capsules/tag-picker"
+import { CoverUploader } from "@/components/capsules/cover-uploader"
+import { Loader2, Lock, Globe, Link2, ArrowLeft } from "lucide-react"
+import { uploadCoverImage, uploadMedia } from "@/services/api"
+import type { CreateCapsulePayload, ApiError, Capsule } from "@/services/api"
 
 interface CreateCapsuleFormProps {
-  onSubmit: (data: CreateCapsulePayload) => Promise<void>
+  onSubmit: (data: CreateCapsulePayload) => Promise<Capsule>
   onCancel?: () => void
   error: ApiError | null
 }
@@ -21,7 +24,7 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   const [isLoading, setIsLoading] = useState(false)
   const [localError, setLocalError] = useState<ApiError | null>(null)
   const [tags, setTags] = useState<string[]>([])
-  const [tagInput, setTagInput] = useState("")
+  const [coverValue, setCoverValue] = useState<File | string | null>(null)
   const [visibility, setVisibility] = useState("private")
   const [status, setStatus] = useState("sealed")
   const [allowComments, setAllowComments] = useState(true)
@@ -48,16 +51,6 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   const minDateString = minDate.toISOString().slice(0, 16)
   const maxDateString = maxDate.toISOString().slice(0, 16)
 
-  function addTag(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault()
-      const tag = tagInput.trim().replace(/,/g, "")
-      if (tag && !tags.includes(tag)) setTags([...tags, tag])
-      setTagInput("")
-    }
-  }
-
-  function removeTag(t: string) { setTags(tags.filter((x) => x !== t)) }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -86,7 +79,15 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
 
     setIsLoading(true)
     try {
-      await onSubmit({
+      // Якщо coverValue — File, завантажуємо і отримуємо URL
+      let resolvedCoverUrl: string | null = null
+      if (coverValue instanceof File) {
+        resolvedCoverUrl = await uploadCoverImage(coverValue)
+      } else if (typeof coverValue === 'string') {
+        resolvedCoverUrl = coverValue
+      }
+
+      const created = await onSubmit({
         title,
         body: body || null,
         visibility,
@@ -96,9 +97,18 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
         allowComments,
         allowReactions,
         tags: tags.length > 0 ? tags : null,
+        coverImageUrl: resolvedCoverUrl,
         media: null,
         location: null,
       })
+
+      if (mediaFiles.length > 0) {
+        for (const mediaFile of mediaFiles) {
+          await uploadMedia(created.id, mediaFile.file)
+        }
+      }
+
+      navigate('/capsules')
     } catch (err: any) {
       setLocalError(err)
     } finally {
@@ -165,25 +175,22 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
           </div>
 
           <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium">Cover Image</Label>
+            <CoverUploader coverValue={coverValue} onCoverChange={setCoverValue} />
+            <p className="text-xs text-muted-foreground">Optional. Shown as thumbnail in capsule lists. Selecting a tag with image will suggest it as cover.</p>
+          </div>
+
+          <div className="flex flex-col gap-2">
             <Label className="text-sm font-medium">Media</Label>
             <MediaUploader files={mediaFiles} onFilesChange={setMediaFiles} />
             <p className="text-xs text-muted-foreground">Optional. Add photos or videos to your capsule.</p>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="tags" className="text-sm font-medium">Tags</Label>
-            <Input id="tags" type="text" placeholder="Type a tag and press Enter" className="h-11" value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={addTag} />
-            {tags.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {tags.map((tag) => (
-                  <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-                    {tag}
-                    <button type="button" onClick={() => removeTag(tag)} className="ml-0.5 rounded-full p-0.5 transition-colors hover:bg-muted bg-transparent border-none shadow-none"><X className="h-3 w-3" /></button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          <TagPicker
+            selectedTags={tags}
+            onTagsChange={setTags}
+            onCoverSuggestion={(url) => { if (!coverValue) setCoverValue(url) }}
+          />
 
           {visibility === "public" && (
             <div className="flex flex-col gap-4 rounded-xl border border-border bg-secondary/30 p-4">

@@ -10,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -32,6 +33,17 @@ public class CapsuleController {
     public ResponseEntity<List<CapsuleResponse>> listMine(Authentication auth) {
         String ownerId = currentUserId(auth);
         return ResponseEntity.ok(capsuleService.listMine(ownerId));
+    }
+
+    @GetMapping("/calendar")
+    public ResponseEntity<List<CapsuleResponse>> calendar(
+            @RequestParam String from,
+            @RequestParam String to,
+            Authentication auth) {
+        String ownerId = currentUserId(auth);
+        Instant fromInst = Instant.parse(from);
+        Instant toInst = Instant.parse(to);
+        return ResponseEntity.ok(capsuleService.listByDateRange(ownerId, fromInst, toInst));
     }
 
     /**

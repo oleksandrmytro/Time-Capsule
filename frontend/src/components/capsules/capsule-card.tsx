@@ -10,8 +10,13 @@ interface CapsuleCardProps {
 }
 
 export function CapsuleCard({ capsule, onClick }: CapsuleCardProps) {
+  const [coverSrc, setCoverSrc] = useState(capsule.coverImageUrl ?? "")
   const [showUnlockAnim, setShowUnlockAnim] = useState(false)
   const prevStatus = useRef(capsule.status)
+
+  useEffect(() => {
+    setCoverSrc(capsule.coverImageUrl ?? "")
+  }, [capsule.coverImageUrl])
 
   useEffect(() => {
     if (prevStatus.current === 'sealed' && capsule.status === 'opened') {
@@ -25,9 +30,22 @@ export function CapsuleCard({ capsule, onClick }: CapsuleCardProps) {
   return (
     <button
       onClick={() => onClick(capsule.id)}
-      className={`group flex flex-col rounded-2xl border border-border bg-card p-5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-accent/5 cursor-pointer w-full ${showUnlockAnim ? 'animate-unlock-card' : ''}`}
+      className={`group flex flex-col rounded-2xl border border-border bg-card text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-accent/5 cursor-pointer w-full overflow-hidden ${showUnlockAnim ? 'animate-unlock-card' : ''}`}
     >
-      <div className="mb-3 flex items-center gap-2">
+      {coverSrc && (
+        <div className="relative h-36 w-full overflow-hidden">
+          <img
+            src={coverSrc}
+            alt={capsule.title}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            loading="lazy"
+            onError={() => setCoverSrc("/static/tags/default.jpg")}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-card/60 to-transparent" />
+        </div>
+      )}
+      <div className="flex flex-col p-5">
+        <div className="mb-3 flex items-center gap-2">
         <StatusBadge status={capsule.status} />
         <VisibilityBadge visibility={capsule.visibility} />
       </div>
@@ -59,6 +77,7 @@ export function CapsuleCard({ capsule, onClick }: CapsuleCardProps) {
           ))}
         </div>
       )}
+      </div>
     </button>
   )
 }

@@ -42,6 +42,8 @@ public class CreateCapsuleRequest {
     @Size(max = 20, message = "Maximum 20 tags allowed")
     private List<String> tags;
 
+    private String coverImageUrl;
+
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public String getBody() { return body; }
@@ -64,12 +66,17 @@ public class CreateCapsuleRequest {
     public void setAllowReactions(Boolean allowReactions) { this.allowReactions = allowReactions; }
     public List<String> getTags() { return tags; }
     public void setTags(List<String> tags) { this.tags = tags; }
+    public String getCoverImageUrl() { return coverImageUrl; }
+    public void setCoverImageUrl(String coverImageUrl) { this.coverImageUrl = coverImageUrl; }
 
     public static class MediaDto {
+        private String id;
         private String url;
         private String type;
         private Object meta;
 
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
         public String getUrl() { return url; }
         public void setUrl(String url) { this.url = url; }
         public String getType() { return type; }

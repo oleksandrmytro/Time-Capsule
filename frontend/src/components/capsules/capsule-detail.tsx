@@ -24,6 +24,7 @@ interface CapsuleDetailProps {
 }
 
 export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onRefreshFollowing, isAuthenticated = false, currentUserId }: CapsuleDetailProps) {
+  const [coverSrc, setCoverSrc] = useState(capsule.coverImageUrl ?? "")
   const [copied, setCopied] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
   const [showUnlockAnimation, setShowUnlockAnimation] = useState(false)
@@ -38,7 +39,12 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
     hasShownUnlockAnimation.current = !capsule.isLocked
     prevLocked.current = capsule.isLocked
     setShowUnlockAnimation(false)
+    setCoverSrc(capsule.coverImageUrl ?? "")
   }, [capsule.id])
+
+  useEffect(() => {
+    setCoverSrc(capsule.coverImageUrl ?? "")
+  }, [capsule.coverImageUrl])
 
   useEffect(() => {
     if (!capsule.isLocked || !capsule.unlockAt || !onUnlock) return
@@ -114,6 +120,17 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
           </div>
         </div>
         <div className="rounded-2xl border border-border bg-card shadow-sm">
+          {coverSrc && (
+            <div className="h-64 w-full overflow-hidden rounded-t-2xl border-b border-border sm:h-80">
+              <img
+                src={coverSrc}
+                alt={capsule.title}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                onError={() => setCoverSrc("/static/tags/default.jpg")}
+              />
+            </div>
+          )}
           <div className="p-6 sm:p-8">
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <StatusBadge status={capsule.status} />

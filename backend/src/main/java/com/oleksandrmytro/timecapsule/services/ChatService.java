@@ -37,13 +37,26 @@ public class ChatService {
      * Якщо передано replyToMessageId (як у відповіді), зберігається посилання на батьківське повідомлення —
      * це потрібно для відображення цитати на фронтенді.
      */
-    public Map<String, Object> sendMessage(String currentUserId, String peerId, String text, String replyToMessageId) {
-        if (!StringUtils.hasText(text)) throw new IllegalArgumentException("Message text is empty");
+    public Map<String, Object> sendMessage(String currentUserId,
+                                           String peerId,
+                                           String text,
+                                           String replyToMessageId,
+                                           String mediaUrl,
+                                           String mediaKind,
+                                           String mimeType) {
+        boolean hasText = StringUtils.hasText(text);
+        boolean hasMedia = StringUtils.hasText(mediaUrl);
+        if (!hasText && !hasMedia) throw new IllegalArgumentException("Message is empty");
         userService.getById(peerId); // validate peer exists
-        ChatMessage msg = new ChatMessage(currentUserId, peerId, text.trim());
-        msg.setType(ChatMessageType.TEXT);
+        ChatMessage msg = new ChatMessage(currentUserId, peerId, hasText ? text.trim() : "");
+        msg.setType(resolveMessageType(mediaKind, hasMedia));
         msg.setCreatedAt(Instant.now());
         msg.setStatus(ChatMessageStatus.SENT);
+        if (hasMedia) {
+            msg.setMediaUrl(mediaUrl);
+            msg.setMediaKind(mediaKind);
+            msg.setMimeType(mimeType);
+        }
         if (StringUtils.hasText(replyToMessageId)) {
             msg.setReplyToMessageId(new ObjectId(replyToMessageId));
         }
@@ -74,6 +87,9 @@ public class ChatService {
         payloadToPeer.put("fromMe", false);
         payloadToPeer.put("timestamp", saved.getCreatedAt().toString());
         payloadToPeer.put("status", saved.getStatus());
+        payloadToPeer.put("mediaUrl", saved.getMediaUrl());
+        payloadToPeer.put("mediaKind", saved.getMediaKind());
+        payloadToPeer.put("mimeType", saved.getMimeType());
         if (saved.getCapsuleId() != null) payloadToPeer.put("capsuleId", saved.getCapsuleId().toHexString());
         if (saved.getCapsuleTitle() != null) payloadToPeer.put("capsuleTitle", saved.getCapsuleTitle());
         if (saved.getReplyToMessageId() != null) payloadToPeer.put("replyToMessageId", saved.getReplyToMessageId().toHexString());
@@ -89,6 +105,9 @@ public class ChatService {
         payloadToSender.put("fromMe", true);
         payloadToSender.put("timestamp", saved.getCreatedAt().toString());
         payloadToSender.put("status", saved.getStatus());
+        payloadToSender.put("mediaUrl", saved.getMediaUrl());
+        payloadToSender.put("mediaKind", saved.getMediaKind());
+        payloadToSender.put("mimeType", saved.getMimeType());
         if (saved.getCapsuleId() != null) payloadToSender.put("capsuleId", saved.getCapsuleId().toHexString());
         if (saved.getCapsuleTitle() != null) payloadToSender.put("capsuleTitle", saved.getCapsuleTitle());
         if (saved.getReplyToMessageId() != null) payloadToSender.put("replyToMessageId", saved.getReplyToMessageId().toHexString());
@@ -110,12 +129,21 @@ public class ChatService {
             entry.put("fromMe", fromMe);
             entry.put("timestamp", m.getCreatedAt().toString());
             entry.put("status", m.getStatus());
+            entry.put("mediaUrl", m.getMediaUrl());
+            entry.put("mediaKind", m.getMediaKind());
+            entry.put("mimeType", m.getMimeType());
             if (m.getCapsuleId() != null) entry.put("capsuleId", m.getCapsuleId().toHexString());
             if (m.getCapsuleTitle() != null) entry.put("capsuleTitle", m.getCapsuleTitle());
             if (m.getReplyToMessageId() != null) entry.put("replyToMessageId", m.getReplyToMessageId().toHexString());
             dto.add(entry);
         }
         return dto;
+    }
+
+    private ChatMessageType resolveMessageType(String mediaKind, boolean hasMedia) {
+        if (!hasMedia) return ChatMessageType.TEXT;
+        if ("video".equalsIgnoreCase(mediaKind)) return ChatMessageType.VIDEO;
+        return ChatMessageType.IMAGE;
     }
 
     public List<Map<String, Object>> listConversations(String currentUserId) {

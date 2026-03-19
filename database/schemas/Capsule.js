@@ -41,8 +41,10 @@ var capsuleSchema = {
     shareToken: { bsonType: "string" },
     tags: {
       bsonType: "array",
-      items: { bsonType: "string" }
+      items: { bsonType: "string" },
+      maxItems: 20
     },
+    coverImageUrl: { bsonType: "string" },
     createdAt: { bsonType: "date" },
     updatedAt: { bsonType: "date" },
     deletedAt: { bsonType: "date" }

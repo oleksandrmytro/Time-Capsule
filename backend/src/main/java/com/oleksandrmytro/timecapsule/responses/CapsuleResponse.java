@@ -20,6 +20,7 @@ public class CapsuleResponse {
     private Boolean allowReactions;
     private String shareToken;
     private List<String> tags;
+    private String coverImageUrl;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -55,16 +56,21 @@ public class CapsuleResponse {
     public void setShareToken(String shareToken) { this.shareToken = shareToken; }
     public List<String> getTags() { return tags; }
     public void setTags(List<String> tags) { this.tags = tags; }
+    public String getCoverImageUrl() { return coverImageUrl; }
+    public void setCoverImageUrl(String coverImageUrl) { this.coverImageUrl = coverImageUrl; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 
     public static class Media {
+        private String id;
         private String url;
         private String type;
         private Object meta;
 
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
         public String getUrl() { return url; }
         public void setUrl(String url) { this.url = url; }
         public String getType() { return type; }

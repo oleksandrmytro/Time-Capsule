@@ -27,7 +27,16 @@ public class ChatMessage {
     private String text;
 
     @Field("type")
-    private String type = ChatMessageType.TEXT.getValue(); // text | capsule_share
+    private String type = ChatMessageType.TEXT.getValue(); // text | image | video | capsule_share
+
+    @Field("mediaUrl")
+    private String mediaUrl;
+
+    @Field("mediaKind")
+    private String mediaKind;
+
+    @Field("mimeType")
+    private String mimeType;
 
     @Field("capsuleId")
     private ObjectId capsuleId;
@@ -68,6 +77,12 @@ public class ChatMessage {
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
     public void setType(ChatMessageType type) { this.type = type != null ? type.getValue() : null; }
+    public String getMediaUrl() { return mediaUrl; }
+    public void setMediaUrl(String mediaUrl) { this.mediaUrl = mediaUrl; }
+    public String getMediaKind() { return mediaKind; }
+    public void setMediaKind(String mediaKind) { this.mediaKind = mediaKind; }
+    public String getMimeType() { return mimeType; }
+    public void setMimeType(String mimeType) { this.mimeType = mimeType; }
     public ObjectId getCapsuleId() { return capsuleId; }
     public void setCapsuleId(ObjectId capsuleId) { this.capsuleId = capsuleId; }
     public String getCapsuleTitle() { return capsuleTitle; }

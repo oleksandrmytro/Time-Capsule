@@ -64,12 +64,22 @@ public class SecurityConfiguration {
         this.clientRegistrationRepository = clientRegistrationRepository;
     }
 
+    @Bean
+    @Order(0)
+    public SecurityFilterChain staticResourcesFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/static/**", "/uploads/**")
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+        return http.build();
+    }
+
     /**
      * wsSecurityFilterChain — налаштування безпеки для WebSocket.
      * Дозволяє всі запити, вимикає CSRF, сесії stateless.
      */
     @Bean // Позначає метод як Spring Bean(щоб можна було використовувати як конфігурацію безпеки)
-    @Order(0) // Вказує порядок застосування фільтр-ланцюга (найперший)
+    @Order(1) // ws chain
     public SecurityFilterChain wsSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/ws/**")                                                                  // Застосовує цей ланцюг для всіх маршрутів, що починаються з /ws/
@@ -86,7 +96,7 @@ public class SecurityConfiguration {
      * Встановлює JWT-фільтр, вимикає CSRF, сесії stateless.
      */
     @Bean
-    @Order(1)
+    @Order(2)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/api/**")                         // Застосовує ланцюг для всіх маршрутів що починаються з /api/
@@ -96,6 +106,8 @@ public class SecurityConfiguration {
                 .httpBasic(AbstractHttpConfigurer::disable)             // Вимикає http basic auth (бо використовується JWT)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/hello").permitAll()
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/tags/**").permitAll()
+                        .requestMatchers("/api/admin/**").authenticated()
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/capsules/*/comments").permitAll()    // Публічний перегляд коментарів
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/capsules/*/reactions").permitAll()   // Публічний перегляд реакцій
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/capsules/*").permitAll()             // Публічний перегляд капсул
@@ -116,7 +128,7 @@ public class SecurityConfiguration {
      * Дозволяє всі запити, кастомізує Google OAuth2, встановлює success/failure handler-и.
      */
     @Bean
-    @Order(2)
+    @Order(3)
     public SecurityFilterChain oauthSecurityFilterChain(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/oauth2/**", "/login/oauth2/**", "/error")            // Застосовує ланцюг для маршрутів, пов'язаних з OAuth2 login та помилками
@@ -158,7 +170,7 @@ public class SecurityConfiguration {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost", "http://localhost:5173", "http://localhost:80"));           // Дозволяє запити з цих origin (фронтенд працює на localhost:5173)
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));            // Дозволяє ці HTTP-методи для CORS-запитів
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));            // Дозволяє ці HTTP-методи для CORS-запитів
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));          // Дозволяє ці заголовки в CORS-запитах (Authorization для JWT, Content-Type для JSON)
         configuration.setAllowCredentials(true);            // Дозволяє відправляти куки та авторизаційні заголовки в CORS-запитах
         configuration.setExposedHeaders(List.of("Authorization"));          // Дозволяє фронтенду отримувати заголовок Authorization в CORS-відповідях (щоб отримати JWT-токен після входу)

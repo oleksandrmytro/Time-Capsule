@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { ChevronLeft, ChevronRight, X, Play, Image as ImageIcon, Film } from "lucide-react"
-import type { MediaItem } from "@/services/api"
+import { getApiBase, type MediaItem } from "@/services/api"
 
 interface MediaGalleryProps {
   media: MediaItem[]
@@ -12,6 +12,13 @@ interface MediaGalleryProps {
 export function MediaGallery({ media, className }: MediaGalleryProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   if (media.length === 0) return null
+
+  const resolveUrl = (url?: string) => {
+    if (!url) return ""
+    if (url.startsWith("http://") || url.startsWith("https://")) return url
+    if (url.startsWith("/")) return `${getApiBase()}${url}`
+    return `${getApiBase()}/${url}`
+  }
 
   const closeLightbox = () => setSelectedIndex(null)
   const goToPrevious = () => { if (selectedIndex !== null) setSelectedIndex(selectedIndex === 0 ? media.length - 1 : selectedIndex - 1) }
@@ -31,10 +38,10 @@ export function MediaGallery({ media, className }: MediaGalleryProps) {
           <button key={item.id} onClick={() => setSelectedIndex(index)}
             className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted transition-all hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {item.type === "image" ? (
-              <img src={item.thumbnail || item.url} alt={item.alt || `Media ${index + 1}`} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+              <img src={resolveUrl(item.thumbnail || item.url)} alt={item.alt || `Media ${index + 1}`} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
             ) : (
               <>
-                <img src={item.thumbnail || item.url} alt={item.alt || `Video ${index + 1}`} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                <img src={resolveUrl(item.thumbnail || item.url)} alt={item.alt || `Video ${index + 1}`} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                 <div className="absolute inset-0 flex items-center justify-center bg-background/30">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background/80 transition-transform group-hover:scale-110"><Play className="h-4 w-4 text-foreground" /></div>
                 </div>
@@ -61,9 +68,9 @@ export function MediaGallery({ media, className }: MediaGalleryProps) {
               )}
               <div className="flex max-h-[85vh] max-w-[90vw] items-center justify-center">
                 {media[selectedIndex].type === "image" ? (
-                  <img src={media[selectedIndex].url} alt={media[selectedIndex].alt || "Full size"} className="max-h-[85vh] w-auto rounded-lg object-contain" />
+                  <img src={resolveUrl(media[selectedIndex].url)} alt={media[selectedIndex].alt || "Full size"} className="max-h-[85vh] w-auto rounded-lg object-contain" />
                 ) : (
-                  <video src={media[selectedIndex].url} controls autoPlay className="max-h-[85vh] max-w-full rounded-lg" />
+                  <video src={resolveUrl(media[selectedIndex].url)} controls autoPlay className="max-h-[85vh] max-w-full rounded-lg" />
                 )}
               </div>
               {media.length > 1 && <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-background/80 px-3 py-1 text-xs font-medium">{selectedIndex + 1} / {media.length}</div>}

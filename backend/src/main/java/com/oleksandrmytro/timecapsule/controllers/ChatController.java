@@ -43,10 +43,12 @@ public class ChatController {
     }
 
     @PostMapping("/{userId}/messages")
-    public ResponseEntity<Map<String, Object>> sendMessage(@PathVariable String userId, @RequestBody ChatMessageRequest body, Authentication auth) {
-        if (auth == null || !(auth.getPrincipal() instanceof User me)) return ResponseEntity.status(401).build();
-        try {
             Map<String, Object> dto = chatService.sendMessage(me.getId(), userId, body.text(), body.replyToMessageId());
+                    body.replyToMessageId(),
+                    body.mediaUrl(),
+                    body.mediaKind(),
+                    body.mimeType()
+            );
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
@@ -54,4 +56,11 @@ public class ChatController {
     }
 
     public record ChatMessageRequest(String text, String replyToMessageId) {}
+    public record ChatMessageRequest(
+            String text,
+            String replyToMessageId,
+            String mediaUrl,
+            String mediaKind,
+            String mimeType
+    ) {}
 }

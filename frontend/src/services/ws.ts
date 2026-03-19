@@ -22,7 +22,7 @@ export interface ChatStreamCallbacks {
 
 export interface ChatWsMessage {
   id: string
-  type?: 'text' | 'capsule_share'
+  type?: 'text' | 'image' | 'video' | 'capsule_share'
   text: string
   fromUserId?: string
   fromMe: boolean
@@ -31,6 +31,9 @@ export interface ChatWsMessage {
   capsuleId?: string
   capsuleTitle?: string
   replyToMessageId?: string | null
+  mediaUrl?: string | null
+  mediaKind?: 'image' | 'video' | null
+  mimeType?: string | null
 }
 
 let chatCallbacks: ChatStreamCallbacks = {}

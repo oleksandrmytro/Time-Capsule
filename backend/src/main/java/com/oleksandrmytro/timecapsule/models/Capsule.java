@@ -58,6 +58,9 @@ public class Capsule {
     @Field("tags")
     private List<String> tags = new ArrayList<>();
 
+    @Field("coverImageUrl")
+    private String coverImageUrl;
+
     @Field("createdAt")
     private Instant createdAt = Instant.now();
 
@@ -104,6 +107,8 @@ public class Capsule {
     public void setShareToken(String shareToken) { this.shareToken = shareToken; }
     public List<String> getTags() { return tags; }
     public void setTags(List<String> tags) { this.tags = tags; }
+    public String getCoverImageUrl() { return coverImageUrl; }
+    public void setCoverImageUrl(String coverImageUrl) { this.coverImageUrl = coverImageUrl; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
@@ -112,10 +117,13 @@ public class Capsule {
     public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
 
     public static class Media {
+        private String id;
         private String url;
         private String type;
         private Object meta;
 
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
         public String getUrl() { return url; }
         public void setUrl(String url) { this.url = url; }
         public String getType() { return type; }

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { Timer, Lock, Eye, Users, Grid3X3, List } from "lucide-react"
 import { StatusBadge } from "@/components/status-badge"
@@ -101,6 +101,12 @@ export function ProfileCapsulesGrid({
 }
 
 function CapsuleGridItem({ capsule, onClick }: { capsule: Capsule; onClick: () => void }) {
+  const [coverSrc, setCoverSrc] = useState(capsule.coverImageUrl ?? "")
+
+  useEffect(() => {
+    setCoverSrc(capsule.coverImageUrl ?? "")
+  }, [capsule.coverImageUrl])
+
   const VisibilityIcon =
     capsule.visibility === "private"
       ? Lock
@@ -113,13 +119,23 @@ function CapsuleGridItem({ capsule, onClick }: { capsule: Capsule; onClick: () =
       onClick={onClick}
       className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-gradient-to-br from-primary/8 via-card to-accent/5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-accent/15 hover:border-accent/50 cursor-pointer w-full text-left"
     >
-      {/* Background pattern */}
-      <div className="absolute inset-0 flex items-center justify-center opacity-10 transition-opacity duration-300 group-hover:opacity-20">
-        <Timer className="h-20 w-20 text-primary" />
-      </div>
+      {/* Cover image OR background pattern */}
+      {coverSrc ? (
+        <img
+          src={coverSrc}
+          alt={capsule.title}
+          className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          loading="lazy"
+          onError={() => setCoverSrc("/static/tags/default.jpg")}
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center opacity-10 transition-opacity duration-300 group-hover:opacity-20">
+          <Timer className="h-20 w-20 text-primary" />
+        </div>
+      )}
 
-      {/* Gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      {/* Gradient overlay — stronger when cover exists */}
+      <div className={`absolute inset-0 bg-gradient-to-t ${coverSrc ? "from-black/60 via-black/10 to-transparent" : "from-black/30 via-transparent to-transparent opacity-0 group-hover:opacity-100"} transition-opacity duration-300`} />
 
       {/* Content overlay */}
       <div className="absolute inset-0 flex flex-col justify-between p-4 sm:p-5">
@@ -136,6 +152,20 @@ function CapsuleGridItem({ capsule, onClick }: { capsule: Capsule; onClick: () =
           <h3 className="line-clamp-2 text-xs font-semibold leading-tight text-card-foreground sm:text-sm sm:leading-snug">
             {capsule.title}
           </h3>
+          {capsule.tags && capsule.tags.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {capsule.tags.slice(0, 2).map((tag) => (
+                <span key={tag} className="rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground backdrop-blur-sm">
+                  {tag}
+                </span>
+              ))}
+              {capsule.tags.length > 2 && (
+                <span className="rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground backdrop-blur-sm">
+                  +{capsule.tags.length - 2}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </button>
@@ -143,14 +173,30 @@ function CapsuleGridItem({ capsule, onClick }: { capsule: Capsule; onClick: () =
 }
 
 function CapsuleListItem({ capsule, onClick }: { capsule: Capsule; onClick: () => void }) {
+  const [coverSrc, setCoverSrc] = useState(capsule.coverImageUrl ?? "")
+
+  useEffect(() => {
+    setCoverSrc(capsule.coverImageUrl ?? "")
+  }, [capsule.coverImageUrl])
+
   return (
     <button
       onClick={onClick}
       className="group flex items-start gap-4 rounded-xl border border-border bg-card p-4 sm:p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/10 cursor-pointer w-full text-left"
     >
-      {/* Icon with gradient background */}
-      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-accent/20 transition-all duration-300 group-hover:from-primary/25 group-hover:to-accent/30">
-        <Timer className="h-7 w-7 text-primary transition-transform duration-300 group-hover:scale-110" />
+      {/* Thumbnail: cover image OR icon */}
+      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary/15 to-accent/20 transition-all duration-300 group-hover:from-primary/25 group-hover:to-accent/30">
+        {coverSrc ? (
+          <img
+            src={coverSrc}
+            alt={capsule.title}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
+            loading="lazy"
+            onError={() => setCoverSrc("/static/tags/default.jpg")}
+          />
+        ) : (
+          <Timer className="h-7 w-7 text-primary transition-transform duration-300 group-hover:scale-110" />
+        )}
       </div>
 
       {/* Content */}
@@ -170,6 +216,22 @@ function CapsuleListItem({ capsule, onClick }: { capsule: Capsule; onClick: () =
           <p className="line-clamp-1 text-sm text-muted-foreground">
             {capsule.body}
           </p>
+        )}
+
+        {/* Tags */}
+        {capsule.tags && capsule.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {capsule.tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
+                {tag}
+              </span>
+            ))}
+            {capsule.tags.length > 3 && (
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
+                +{capsule.tags.length - 3}
+              </span>
+            )}
+          </div>
         )}
 
         {/* Unlock date */}

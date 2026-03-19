@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
-import { Routes, Route, useNavigate, useLocation, useParams } from 'react-router-dom'
+import { Routes, Route, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom'
 import './App.css'
 import Header from './components/Header'
 import { Footer } from './components/footer'
@@ -17,6 +17,8 @@ import { UserSearch } from './components/users/user-search'
 import { UserProfileView } from './components/users/user-profile'
 import { ChatList } from './components/chat/chat-list'
 import { ChatWindow } from './components/chat/chat-window'
+import { CalendarView } from './components/capsules/calendar-view'
+import { AdminPanel } from './components/admin/admin-panel'
 import {
   apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser, getUserProfile, getFollowing, getFollowers, getUserCapsules, followUser, unfollowUser,
   type UserProfile, type Capsule, type ApiError, type CreateCapsulePayload, type UserPublic,
@@ -40,6 +42,7 @@ function App() {
   const location = useLocation()
 
   const isAuthenticated = Boolean(tokens && profile)
+  const isAdmin = (profile?.role || '').toLowerCase() === 'admin' || (profile?.role || '').toUpperCase() === 'ROLE_ADMIN'
   // data: any - Функція приймає будь-який тип даних, бо API може повернути що завгодно
   // : data is UserProfile - Це спеціальний TypeScript синтаксис.
   // -- Якщо функція повертає true, TypeScript розуміє, що data тепер має тип UserProfile в цьому контексті.
@@ -50,12 +53,13 @@ function App() {
     Boolean(data && typeof data === 'object' && !Array.isArray(data) && data.id && data.email)
 
   // --- Session ---
-  const establishSession = async () => {
+  const establishSession = async (): Promise<UserProfile> => {
     const data = await getCurrentUser()
     if (!isValidProfile(data)) throw { status: 401, message: 'Invalid profile response' }
     setProfile(data)
     setTokens({ session: 'cookie' })
     loadFollowing(data.id)
+    return data
   }
   // apiRequest('/api/auth/session', { method: 'GET' }) - Для того щоб дізнатись чи є активна сесія користувача(чи залогінений)
   // Якщо відповідь показує, що користувач аутентифікований, ми викликаємо establishSession(), щоб отримати його профіль і встановити токени.
@@ -132,8 +136,9 @@ function App() {
   const login = async () => {
     setError(null)
     await apiRequest('/api/auth/login', { body: { email: form.email, password: form.password } })
-    await establishSession()
-    navigate('/')
+    const me = await establishSession()
+    const role = (me.role || '').toLowerCase()
+    navigate(role === 'admin' || role === 'role_admin' ? '/admin' : '/')
   }
 
   const verify = async () => {
@@ -179,11 +184,11 @@ function App() {
     finally { setCapsulesLoading(false) }
   }, [])
 
-  const handleCreateCapsule = async (capsuleData: CreateCapsulePayload) => {
+  const handleCreateCapsule = async (capsuleData: CreateCapsulePayload): Promise<Capsule> => {
     setError(null)
-    await createCapsule(capsuleData)
+    const created = await createCapsule(capsuleData)
     await loadCapsules()
-    navigate('/capsules')
+    return created
   }
 
   const viewCapsule = async (id: string) => {
@@ -299,6 +304,7 @@ function App() {
         onAccount={() => loadProfile()}
         onLogout={logout}
         onLoadCapsules={loadCapsules}
+        profileRole={profile?.role}
       />
       <main className="flex-1">
         <Routes>
@@ -331,11 +337,11 @@ function App() {
           } />
 
           <Route path="/create" element={
-            <CreateCapsuleForm onSubmit={handleCreateCapsule} error={error} />
+            isAdmin ? <Navigate to="/admin" replace /> : <CreateCapsuleForm onSubmit={handleCreateCapsule} error={error} />
           } />
 
           <Route path="/capsules" element={
-            <CapsulesList capsules={capsules} isLoading={capsulesLoading} onSelect={viewCapsule} onCreate={() => navigate('/create')} />
+            isAdmin ? <Navigate to="/admin" replace /> : <CapsulesList capsules={capsules} isLoading={capsulesLoading} onSelect={viewCapsule} onCreate={() => navigate('/create')} />
           } />
 
           <Route path="/capsules/:id" element={
@@ -376,17 +382,33 @@ function App() {
              )
           } />
 
-          <Route path="/search" element={<UserSearch currentUserId={profile?.id} />} />
+          <Route path="/search" element={isAdmin ? <Navigate to="/admin" replace /> : <UserSearch currentUserId={profile?.id} />} />
+
+          <Route path="/calendar" element={
+            isAdmin ? <Navigate to="/admin" replace /> : <CalendarView onSelectCapsule={viewCapsule} />
+          } />
+
+          <Route path="/admin/*" element={
+            isAdmin ? <AdminPanel /> : (
+              <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
+                <div className="w-full max-w-3xl">
+                  <EmptyState icon={ShieldOff} title="Access Denied" description="You don't have permission to access the admin panel." actionLabel="Go Home" onAction={() => navigate('/')} />
+                </div>
+              </div>
+            )
+          } />
 
           <Route path="/profile/:username" element={<ProfileRoute currentUserId={profile?.id} />} />
 
           <Route path="/chat" element={
-            <div className="mx-auto max-w-4xl px-4 py-6" style={{ minHeight: '70vh' }}>
-              <ChatList currentUserId={profile?.id} />
-            </div>
+            isAdmin ? <Navigate to="/admin" replace /> : (
+              <div className="mx-auto max-w-4xl px-4 py-6" style={{ minHeight: '70vh' }}>
+                <ChatList currentUserId={profile?.id} />
+              </div>
+            )
           } />
 
-          <Route path="/chat/:userId" element={<ChatRoute />} />
+          <Route path="/chat/:userId" element={isAdmin ? <Navigate to="/admin" replace /> : <ChatRoute />} />
 
           {/* OAuth redirect handler — handled by useEffect above */}
           <Route path="/auth/oauth2/redirect" element={null} />

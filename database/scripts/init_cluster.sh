@@ -16,7 +16,7 @@ echo -e "${BLUE}🔐 Password length: ${#ADMIN_PASS} characters${NC}"
 
 echo -e "${BLUE}🔧 Setting execute permissions on helper scripts...${NC}"
 chmod +x /scripts/wait-for-it.sh
-chmod +x /scripts/import_datasets.sh
+# Removed chmod for missing import_datasets.sh; import runs inside init_schemas.js
 
 echo -e "${BLUE}🚀 Step 2: Initializing replica sets (config server and shards)...${NC}"
 

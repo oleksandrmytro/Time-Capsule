@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Menu, X, Timer, User, LogOut, Plus, Archive, Search, MessageCircle } from 'lucide-react'
+import { Menu, X, Timer, User, LogOut, Plus, Archive, Search, MessageCircle, CalendarDays, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface HeaderProps {
@@ -8,11 +8,13 @@ interface HeaderProps {
   onAccount: () => void
   onLogout: () => void
   onLoadCapsules?: () => void
+  profileRole?: string
 }
 
-export default function Header({ isAuthenticated, onAccount, onLogout, onLoadCapsules }: HeaderProps) {
+export default function Header({ isAuthenticated, onAccount, onLogout, onLoadCapsules, profileRole }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const navigate = useNavigate()
+  const isAdmin = (profileRole || '').toLowerCase() === 'admin' || (profileRole || '').toUpperCase() === 'ROLE_ADMIN'
 
   const go = (path: string) => {
     setMobileOpen(false)
@@ -37,11 +39,13 @@ export default function Header({ isAuthenticated, onAccount, onLogout, onLoadCap
         <nav className="hidden items-center gap-1 md:flex">
           {isAuthenticated ? (
             <>
-              <NavBtn onClick={() => go('/')}>Home</NavBtn>
-              <NavBtn onClick={handleCapsules} icon={Archive}>My Capsules</NavBtn>
-              <NavBtn onClick={() => go('/create')} icon={Plus}>Create</NavBtn>
-              <NavBtn onClick={() => go('/search')} icon={Search}>Search</NavBtn>
-              <NavBtn onClick={() => go('/chat')} icon={MessageCircle}>Chat</NavBtn>
+              <NavBtn onClick={() => go(isAdmin ? '/admin' : '/')}>{isAdmin ? 'Admin Home' : 'Home'}</NavBtn>
+              {!isAdmin && <NavBtn onClick={handleCapsules} icon={Archive}>My Capsules</NavBtn>}
+              {!isAdmin && <NavBtn onClick={() => go('/create')} icon={Plus}>Create</NavBtn>}
+              {!isAdmin && <NavBtn onClick={() => go('/search')} icon={Search}>Search</NavBtn>}
+              {!isAdmin && <NavBtn onClick={() => go('/calendar')} icon={CalendarDays}>Calendar</NavBtn>}
+              {!isAdmin && <NavBtn onClick={() => go('/chat')} icon={MessageCircle}>Chat</NavBtn>}
+              {isAdmin && <NavBtn onClick={() => go('/admin')} icon={Shield}>Admin</NavBtn>}
               <NavBtn onClick={() => { onAccount(); go('/account') }} icon={User}>Profile</NavBtn>
               <Button variant="ghost" size="sm" onClick={onLogout} className="ml-2 gap-1.5 text-muted-foreground hover:text-destructive">
                 <LogOut className="h-4 w-4" /><span>Logout</span>
@@ -65,11 +69,13 @@ export default function Header({ isAuthenticated, onAccount, onLogout, onLoadCap
           <div className="flex flex-col gap-1 p-4">
             {isAuthenticated ? (
               <>
-                <MobileBtn onClick={() => go('/')}>Home</MobileBtn>
-                <MobileBtn onClick={handleCapsules} icon={Archive}>My Capsules</MobileBtn>
-                <MobileBtn onClick={() => go('/create')} icon={Plus}>Create Capsule</MobileBtn>
-                <MobileBtn onClick={() => go('/search')} icon={Search}>Search Users</MobileBtn>
-                <MobileBtn onClick={() => go('/chat')} icon={MessageCircle}>Chat</MobileBtn>
+                <MobileBtn onClick={() => go(isAdmin ? '/admin' : '/')}>{isAdmin ? 'Admin Home' : 'Home'}</MobileBtn>
+                {!isAdmin && <MobileBtn onClick={handleCapsules} icon={Archive}>My Capsules</MobileBtn>}
+                {!isAdmin && <MobileBtn onClick={() => go('/create')} icon={Plus}>Create Capsule</MobileBtn>}
+                {!isAdmin && <MobileBtn onClick={() => go('/search')} icon={Search}>Search Users</MobileBtn>}
+                {!isAdmin && <MobileBtn onClick={() => go('/calendar')} icon={CalendarDays}>Calendar</MobileBtn>}
+                {!isAdmin && <MobileBtn onClick={() => go('/chat')} icon={MessageCircle}>Chat</MobileBtn>}
+                {isAdmin && <MobileBtn onClick={() => go('/admin')} icon={Shield}>Admin Panel</MobileBtn>}
                 <MobileBtn onClick={() => { setMobileOpen(false); onAccount(); navigate('/account') }} icon={User}>Profile</MobileBtn>
                 <button onClick={() => { setMobileOpen(false); onLogout() }} className="mt-4 flex items-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 bg-transparent border-none shadow-none w-full text-left">
                   <LogOut className="h-4 w-4" />Logout

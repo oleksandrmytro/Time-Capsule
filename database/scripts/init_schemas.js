@@ -185,6 +185,29 @@ const collectionConfigs = {
       { fromUserId: 1, toUserId: 1, createdAt: -1 }
     ]
   },
+
+  tags: {
+    schemaFile: './schemas/Tag.js',
+    schemaVar: 'tagSchema',
+    shardKey: { name: 1 },
+    description: "Tag definitions",
+    uniqueIndexes: [
+      { name: 1 }
+    ],
+    indexes: [
+      { isSystem: 1 }
+    ]
+  },
+
+  pending_users: {
+    schemaFile: './schemas/PendingUser.js',
+    schemaVar: 'pendingUserSchema',
+    shardKey: { email: 1 },
+    description: "Pending user registrations",
+    uniqueIndexes: [
+      { email: 1 }
+    ]
+  },
 };
 
 // --- Create collections with loaded schemas ---
@@ -213,6 +236,8 @@ Object.entries(collectionConfigs).forEach(([collectionName, config]) => {
     else if (config.schemaVar === 'geoMarkerSchema' && typeof geoMarkerSchema !== 'undefined') schema = geoMarkerSchema;
     else if (config.schemaVar === 'feedEventSchema' && typeof feedEventSchema !== 'undefined') schema = feedEventSchema;
     else if (config.schemaVar === 'chatMessageSchema' && typeof chatMessageSchema !== 'undefined') schema = chatMessageSchema;
+    else if (config.schemaVar === 'tagSchema' && typeof tagSchema !== 'undefined') schema = tagSchema;
+    else if (config.schemaVar === 'pendingUserSchema' && typeof pendingUserSchema !== 'undefined') schema = pendingUserSchema;
     else {
       print(`❌ Schema variable ${config.schemaVar} not found after loading ${config.schemaFile}`);
     }
@@ -266,3 +291,12 @@ Object.entries(collectionConfigs).forEach(([collectionName, config]) => {
 print(`\n🎉 Schema initialization completed!`);
 print(`📊 Created ${Object.keys(collectionConfigs).length} sharded collections with validation`);
 print(`🔍 All schemas are loaded from /database/schemas/`);
+
+// Auto-import demo datasets (users/tags/capsules)
+try {
+  print(`\n📦 Running import_datasets.js...`);
+  load('./scripts/import_datasets.js');
+  print(`✅ Demo datasets import finished.`);
+} catch (e) {
+  print(`⚠️ import_datasets.js failed: ${e}`);
+}

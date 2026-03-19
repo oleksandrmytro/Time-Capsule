@@ -5,9 +5,11 @@ package com.oleksandrmytro.timecapsule.models.enums;
  */
 public enum ChatMessageType {
     TEXT("text"),
+    IMAGE("image"),
+    VIDEO("video"),
     CAPSULE_SHARE("capsule_share");
 
-    public static final String REGEX = "text|capsule_share";
+    public static final String REGEX = "text|image|video|capsule_share";
 
     private final String value;
 

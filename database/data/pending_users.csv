@@ -1,0 +1,3 @@
+doc
+"{""_id"":{""$oid"":""69b993000000000000000001""},""username"":""kate_waiting"",""email"":""kate.waiting@example.com"",""password"":""$2a$10$uX9sH3kLmQ2rT5vY8nB1cD4eF7gH9jK2mN5pQ8rS1tV4wX7yZ0aBc"",""verificationCode"":""529410"",""verificationCodeExpiresAt"":{""$date"":""2026-03-20T14:30:00.000Z""},""createdAt"":{""$date"":""2026-03-17T14:15:00.000Z""}}"
+"{""_id"":{""$oid"":""69b993000000000000000002""},""username"":""denys_pending"",""email"":""denys.pending@example.com"",""password"":""$2a$10$kP4mN7bV2cX5zA8sD1fG4hJ7lQ0wE3rT6yU9iO2pL5mK8nH1gF4dS"",""verificationCode"":""884122"",""verificationCodeExpiresAt"":{""$date"":""2026-03-20T16:00:00.000Z""},""createdAt"":{""$date"":""2026-03-17T15:00:00.000Z""}}"

@@ -1,0 +1,3 @@
+doc
+"{""_id"":{""$oid"":""69b999000000000000000001""},""userId"":{""$oid"":""69b97ff71912649083bd294c""},""notifications"": [{""type"":""comment"",""title"":""New comment on Open memories"",""data"": {""capsuleId"":""69b99100000000000000000a""},""read"":false,""createdAt"":{""$date"":""2026-03-17T15:30:00.000Z""}}]}"
+"{""_id"":{""$oid"":""69b999000000000000000002""},""userId"":{""$oid"":""69b97ffe1912649083bd294d""},""notifications"": [{""type"":""service"",""title"":""Weekly memory digest is ready"",""data"": {""week"":""2026-W11""},""read"":true,""createdAt"":{""$date"":""2026-03-17T07:00:00.000Z""}}]}"

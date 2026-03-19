@@ -12,5 +12,6 @@ public interface CapsuleRepository extends MongoRepository<Capsule, String> {
     Optional<Capsule> findByIdAndOwnerIdAndDeletedAtIsNull(String id, ObjectId ownerId);
     Optional<Capsule> findByIdAndDeletedAtIsNull(String id);
     long countByOwnerIdAndDeletedAtIsNull(ObjectId ownerId);
+    long countByOwnerIdAndVisibilityAndDeletedAtIsNull(ObjectId ownerId, String visibility);
     List<Capsule> findByOwnerIdAndVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(ObjectId ownerId, String visibility);
 }

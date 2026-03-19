@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -33,10 +34,20 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "bad_request", ex.getMessage(), request, ex);
     }
 
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<ErrorResponse> handleForbidden(SecurityException ex, WebRequest request) {
+        return build(HttpStatus.FORBIDDEN, "forbidden", ex.getMessage(), request, ex);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponse> handleRuntime(RuntimeException ex, WebRequest request) {
         HttpStatus status = HttpStatus.BAD_REQUEST;
         return build(status, "error", ex.getMessage(), request, ex);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFound(NoResourceFoundException ex, WebRequest request) {
+        return build(HttpStatus.NOT_FOUND, "not_found", ex.getMessage(), request, ex);
     }
 
     @ExceptionHandler(Exception.class)

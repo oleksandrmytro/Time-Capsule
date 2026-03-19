@@ -4,6 +4,7 @@ export interface ApiRequestOptions {
   method?: string
   body?: unknown
   token?: string
+  headers?: Record<string, string>
 }
 
 export interface ApiError {
@@ -32,6 +33,7 @@ export interface UserProfile {
   followingCount?: number
   capsulesCount?: number
   createdAt?: string
+  role?: string
 }
 
 export interface UserPublic {
@@ -71,10 +73,19 @@ export interface ChatMessage {
   timestamp: string
   fromMe: boolean
   status?: 'sending' | 'sent' | 'delivered' | 'read'
-  type?: 'text' | 'capsule_share'
+  type?: 'text' | 'image' | 'video' | 'capsule_share'
   capsuleId?: string | null
   capsuleTitle?: string | null
   replyToMessageId?: string | null
+  mediaUrl?: string | null
+  mediaKind?: 'image' | 'video' | null
+  mimeType?: string | null
+}
+
+export interface ChatAttachmentUploadResponse {
+  url: string
+  mediaKind: 'image' | 'video'
+  mimeType: string
 }
 
 export interface MediaItem {
@@ -83,6 +94,23 @@ export interface MediaItem {
   type: 'image' | 'video'
   thumbnail?: string
   alt?: string
+}
+
+export interface CommentData {
+  id: string
+  capsuleId: string
+  userId: string
+  username: string
+  avatarUrl?: string
+  body: string
+  parentCommentId?: string | null
+  replies?: CommentData[]
+  createdAt: string
+}
+
+export interface ReactionSummary {
+  counts: Record<string, number>
+  userReactions: string[]
 }
 
 export interface Capsule {
@@ -99,6 +127,7 @@ export interface Capsule {
   allowComments?: boolean
   allowReactions?: boolean
   tags?: string[] | null
+  coverImageUrl?: string | null
   media?: MediaItem[] | null
   location?: unknown
 }
@@ -113,6 +142,7 @@ export interface CreateCapsulePayload {
   allowComments: boolean
   allowReactions: boolean
   tags?: string[] | null
+  coverImageUrl?: string | null
   media?: unknown
   location?: unknown
 }
@@ -133,7 +163,15 @@ function getApiBase(): string {
     import.meta.env.VITE_API_URL
 
   if (fromEnv) return normalizeApiOrigin(fromEnv)
-  if (typeof window !== 'undefined' && window.location?.origin) return normalizeApiOrigin(window.location.origin)
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const origin = normalizeApiOrigin(window.location.origin)
+    // Dev fallback: if running on Vite (5173) but backend on 8080
+    if (origin.includes('localhost:5173') || origin.includes('127.0.0.1:5173')) {
+      return normalizeApiOrigin(origin.replace('5173', '8080'))
+    }
+    return origin
+  }
   return ''
 }
 
@@ -145,12 +183,14 @@ export async function apiRequest(path: string, opts: ApiRequestOptions = {}): Pr
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+
   const res = await fetch(`${getApiBase()}${path}`, {
     method,
-    headers,
+    headers: isFormData ? (opts as any).headers || {} : headers,
     credentials: 'include',
     cache: 'no-store',
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (isFormData ? body as any : JSON.stringify(body)) : undefined,
   })
   const text = await res.text()
   let data: any
@@ -188,6 +228,10 @@ export async function getCurrentUser(): Promise<UserProfile> {
 // Оновлює профіль поточного користувача
 export async function updateCurrentUser(payload: Partial<UserProfile>): Promise<UserProfile> {
   return apiRequest('/api/users/me', { method: 'PATCH', body: payload })
+}
+
+export async function searchUsers(query: string): Promise<UserPublic[]> {
+  return apiRequest(`/api/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' })
 }
 
 /* ── Capsule API ───────────────────────── */
@@ -233,10 +277,48 @@ export async function uploadMedia(capsuleId: string, file: File): Promise<MediaI
   return data
 }
 
-/* ── User Search & Profiles API ────────── */
+/* ── Cover Image Upload ─────────────────── */
 
-export async function searchUsers(query: string): Promise<UserPublic[]> {
-  return apiRequest(`/api/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' })
+/**
+ * Завантажує обкладинку капсули на сервер і повертає URL.
+ * Використовується перед createCapsule щоб перетворити File → URL.
+ */
+export async function uploadCoverImage(file: File): Promise<string> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const base = getApiBase()
+  const res = await fetch(`${base}/api/media/cover`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : null } catch { data = text }
+  if (!res.ok) {
+    const message = data?.message || data?.error || text || `HTTP ${res.status}`
+    throw { status: res.status, message } as ApiError
+  }
+  return typeof data === 'string' ? data : (data?.url ?? data?.imageUrl ?? '')
+}
+
+export async function uploadChatAttachment(file: File): Promise<ChatAttachmentUploadResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const base = getApiBase()
+  const res = await fetch(`${base}/api/media/chat-attachment`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : null } catch { data = text }
+  if (!res.ok) {
+    const message = data?.message || data?.error || text || `HTTP ${res.status}`
+    throw { status: res.status, message } as ApiError
+  }
+  return data as ChatAttachmentUploadResponse
 }
 
 export async function getUserProfile(username: string): Promise<UserProfile> {
@@ -275,8 +357,30 @@ export async function getChatMessages(userId: string): Promise<ChatMessage[]> {
   return apiRequest(`/api/chat/${userId}/messages`, { method: 'GET' })
 }
 
-export async function sendChatMessage(userId: string, text: string, replyToMessageId?: string | null): Promise<ChatMessage> {
-  return apiRequest(`/api/chat/${userId}/messages`, { method: 'POST', body: { text, replyToMessageId: replyToMessageId || null } })
+export async function sendChatMessage(
+  userId: string,
+  payload: {
+    text?: string
+    replyToMessageId?: string | null
+    mediaUrl?: string | null
+    mediaKind?: 'image' | 'video' | null
+    mimeType?: string | null
+  }
+): Promise<ChatMessage> {
+  const replyToMessageId = payload.replyToMessageId && /^[a-fA-F0-9]{24}$/.test(payload.replyToMessageId)
+    ? payload.replyToMessageId
+    : null
+
+  return apiRequest(`/api/chat/${userId}/messages`, {
+    method: 'POST',
+    body: {
+      text: payload.text ?? '',
+      replyToMessageId,
+      mediaUrl: payload.mediaUrl || null,
+      mediaKind: payload.mediaKind || null,
+      mimeType: payload.mimeType || null,
+    }
+  })
 }
 
 /* ── Share API ─────────────────────────── */
@@ -285,36 +389,17 @@ export async function shareCapsule(capsuleId: string, userIds: string[]): Promis
   return apiRequest(`/api/capsules/${capsuleId}/share`, { method: 'POST', body: { userIds } })
 }
 
-/* ── Comment & Reaction Types ──────────── */
-
-export interface CommentData {
-  id: string
-  capsuleId: string
-  userId: string
-  username: string
-  avatarUrl?: string
-  body: string
-  parentCommentId?: string | null
-  replies?: CommentData[]
-  createdAt: string
-}
-
-export interface ReactionSummary {
-  counts: Record<string, number>
-  userReactions: string[]
-}
-
-/* ── Comment API ───────────────────────── */
-
-// Повертає коментарі для капсули
 export async function getComments(capsuleId: string): Promise<CommentData[]> {
   return apiRequest(`/api/capsules/${capsuleId}/comments`, { method: 'GET' })
 }
 
-// Додає коментар до капсули (parentCommentId для відповідей)
 export async function addComment(capsuleId: string, body: string, parentCommentId?: string | null): Promise<CommentData> {
-  return apiRequest(`/api/capsules/${capsuleId}/comments`, { method: 'POST', body: { body, parentCommentId: parentCommentId || null } })
+  return apiRequest(`/api/capsules/${capsuleId}/comments`, {
+    method: 'POST',
+    body: { body, parentCommentId: parentCommentId || null }
+  })
 }
+
 
 // Видаляє коментар (soft delete)
 export async function deleteComment(capsuleId: string, commentId: string): Promise<void> {
@@ -339,3 +424,183 @@ export async function toggleReaction(capsuleId: string, type: string): Promise<R
 }
 
 export { getApiBase }
+
+/* ── Tag Types ─────────────────────────── */
+
+export interface Tag {
+  id: string
+  name: string
+  imageUrl?: string | null
+  isSystem: boolean
+  createdBy?: string | null
+  createdAt?: string
+}
+
+/* ── Tag API ───────────────────────────── */
+
+export async function listTags(): Promise<Tag[]> {
+  return apiRequest('/api/tags', { method: 'GET' })
+}
+
+export async function searchTags(query: string): Promise<Tag[]> {
+  return apiRequest(`/api/tags/search?q=${encodeURIComponent(query)}`, { method: 'GET' })
+}
+
+export async function createTag(name: string, imageFile?: File | null): Promise<Tag> {
+  const form = new FormData();
+  form.append('name', name);
+  if (imageFile) form.append('image', imageFile);
+  return apiRequest('/api/tags', { method: 'POST', body: form, headers: {} });
+}
+
+/* ── Calendar API ──────────────────────── */
+
+export async function listCapsulesByDateRange(from: string, to: string): Promise<Capsule[]> {
+  return apiRequest(`/api/capsules/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, { method: 'GET' })
+}
+
+/* ── Admin Types ───────────────────────── */
+
+export interface AdminPagedResponse<T> {
+  items: T[]
+  total: number
+  page: number
+  size: number
+}
+
+export interface AdminUser {
+  id: string
+  username: string
+  email: string
+  role: string
+  enabled: boolean
+  status?: 'active' | 'blocked' | 'disabled' | 'deleted'
+  isOnline: boolean
+  avatarUrl: string
+  createdAt: string
+  blockedUntil?: string
+  deletedAt?: string
+}
+
+export interface AdminCapsule {
+  id: string
+  title: string
+  body?: string
+  status: string
+  visibility: string
+  ownerId: string
+  unlockAt: string
+  expiresAt?: string
+  createdAt: string
+  updatedAt?: string
+  allowComments?: boolean
+  allowReactions?: boolean
+  tags: string[]
+  media?: Array<{ id?: string; url?: string; type?: string; meta?: unknown }>
+  coverImageUrl: string
+  deletedAt?: string
+}
+
+export interface AdminAuditLog {
+  id: string
+  actorId?: string
+  actorEmail?: string
+  actorRole?: string
+  action: string
+  entityType: string
+  entityId?: string
+  details?: Record<string, unknown>
+  createdAt: string
+}
+
+export interface AdminCollectionDoc {
+  _id: string | { $oid?: string }
+  [key: string]: unknown
+}
+
+/* ── Admin API ─────────────────────────── */
+
+export async function adminGetStats(): Promise<Record<string, number>> {
+  return apiRequest('/api/admin/stats', { method: 'GET' })
+}
+
+export async function adminListUsers(q = '', page = 0, size = 20, includeDeleted = false, onlyBlocked = false): Promise<AdminPagedResponse<AdminUser>> {
+  return apiRequest(`/api/admin/users?q=${encodeURIComponent(q)}&page=${page}&size=${size}&includeDeleted=${includeDeleted}&onlyBlocked=${onlyBlocked}`, { method: 'GET' })
+}
+
+export async function adminUpdateUser(id: string, updates: Record<string, unknown>): Promise<AdminUser> {
+  return apiRequest(`/api/admin/users/${id}`, { method: 'PATCH', body: updates })
+}
+
+export async function adminDeleteUser(id: string): Promise<void> {
+  return apiRequest(`/api/admin/users/${id}`, { method: 'DELETE' })
+}
+
+export async function adminRestoreUser(id: string): Promise<AdminUser> {
+  return apiRequest(`/api/admin/users/${id}/restore`, { method: 'POST' })
+}
+
+export async function adminBulkUsers(ids: string[], action: string, value?: string): Promise<{ modified: number }> {
+  return apiRequest('/api/admin/users/bulk', { method: 'POST', body: { ids, action, value } })
+}
+
+export async function adminListCapsules(q = '', page = 0, size = 20, includeDeleted = false): Promise<AdminPagedResponse<AdminCapsule>> {
+  return apiRequest(`/api/admin/capsules?q=${encodeURIComponent(q)}&page=${page}&size=${size}&includeDeleted=${includeDeleted}`, { method: 'GET' })
+}
+
+export async function adminDeleteCapsule(id: string): Promise<void> {
+  return apiRequest(`/api/admin/capsules/${id}`, { method: 'DELETE' })
+}
+
+export async function adminRestoreCapsule(id: string): Promise<AdminCapsule> {
+  return apiRequest(`/api/admin/capsules/${id}/restore`, { method: 'POST' })
+}
+
+export async function adminBulkCapsules(ids: string[], action: string, value?: string): Promise<{ modified: number }> {
+  return apiRequest('/api/admin/capsules/bulk', { method: 'POST', body: { ids, action, value } })
+}
+
+export async function adminUpdateCapsule(id: string, updates: Record<string, unknown>): Promise<AdminCapsule> {
+  return apiRequest(`/api/admin/capsules/${id}`, { method: 'PATCH', body: updates })
+}
+
+export async function adminListTags(): Promise<Tag[]> {
+  return apiRequest('/api/admin/tags', { method: 'GET' })
+}
+
+export async function adminDeleteTag(id: string): Promise<void> {
+  return apiRequest(`/api/admin/tags/${id}`, { method: 'DELETE' })
+}
+
+export async function adminCreateTag(payload: { name: string; imageUrl?: string | null }): Promise<Tag> {
+  return apiRequest('/api/admin/tags', { method: 'POST', body: payload })
+}
+
+export async function adminUpdateTag(id: string, updates: Record<string, unknown>): Promise<Tag> {
+  return apiRequest(`/api/admin/tags/${id}`, { method: 'PATCH', body: updates })
+}
+
+export async function adminBulkTags(ids: string[], action: string): Promise<{ modified: number }> {
+  return apiRequest('/api/admin/tags/bulk', { method: 'POST', body: { ids, action } })
+}
+
+export async function adminListAuditLogs(q = '', page = 0, size = 20): Promise<AdminPagedResponse<AdminAuditLog>> {
+  return apiRequest(`/api/admin/audit-logs?q=${encodeURIComponent(q)}&page=${page}&size=${size}`, { method: 'GET' })
+}
+
+export async function adminListCollections(): Promise<string[]> {
+  return apiRequest('/api/admin/collections', { method: 'GET' })
+}
+
+export async function adminListCollectionDocs(name: string, q = '', page = 0, size = 20): Promise<AdminPagedResponse<AdminCollectionDoc>> {
+  return apiRequest(`/api/admin/collections/${encodeURIComponent(name)}?q=${encodeURIComponent(q)}&page=${page}&size=${size}`, { method: 'GET' })
+}
+
+export async function adminUpdateCollectionDoc(name: string, id: string, updates: Record<string, unknown>): Promise<AdminCollectionDoc> {
+  return apiRequest(`/api/admin/collections/${encodeURIComponent(name)}/${encodeURIComponent(id)}`, { method: 'PATCH', body: updates })
+}
+
+export async function adminDeleteCollectionDoc(name: string, id: string): Promise<void> {
+  return apiRequest(`/api/admin/collections/${encodeURIComponent(name)}/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
