@@ -353,6 +353,11 @@ public class AdminService {
         return modified;
     }
 
+    public void deleteTag(String id, User actor) {
+        tagService.delete(id);
+        audit(actor, "TAG_DELETE", "tag", id, Map.of());
+    }
+
     /* ── Audit Logs ────────────────────── */
     public List<AdminAuditLog> listAuditLogs(String query, int page, int size) {
         Query q = new Query();
@@ -417,7 +422,7 @@ public class AdminService {
         return mongoTemplate.count(q, name);
     }
 
-    public Document updateCollectionDoc(String collection, String id, Map<String, Object> updates) {
+    public Document updateCollectionDoc(String collection, String id, Map<String, Object> updates, User actor) {
         ensureAllowedCollection(collection);
         Query q = new Query(idCriteria(id));
         Update u = new Update();
@@ -425,13 +430,16 @@ public class AdminService {
             if (!"_id".equals(k)) u.set(k, v);
         });
         mongoTemplate.updateFirst(q, u, collection);
-        return mongoTemplate.findOne(q, Document.class, collection);
+        Document updated = mongoTemplate.findOne(q, Document.class, collection);
+        audit(actor, "COLLECTION_UPDATE", collection, id, updates);
+        return updated;
     }
 
-    public void deleteCollectionDoc(String collection, String id) {
+    public void deleteCollectionDoc(String collection, String id, User actor) {
         ensureAllowedCollection(collection);
         Query q = new Query(idCriteria(id));
         mongoTemplate.remove(q, collection);
+        audit(actor, "COLLECTION_DELETE", collection, id, Map.of());
     }
 
     private LocalDateTime parseLocalDateTimeOrNull(Object raw) {

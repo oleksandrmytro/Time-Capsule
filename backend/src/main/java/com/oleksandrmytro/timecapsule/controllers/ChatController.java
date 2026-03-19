@@ -43,7 +43,15 @@ public class ChatController {
     }
 
     @PostMapping("/{userId}/messages")
-            Map<String, Object> dto = chatService.sendMessage(me.getId(), userId, body.text(), body.replyToMessageId());
+    public ResponseEntity<Map<String, Object>> send(@PathVariable String userId,
+                                                    @RequestBody ChatMessageRequest body,
+                                                    Authentication auth) {
+        if (auth == null || !(auth.getPrincipal() instanceof User me)) return ResponseEntity.status(401).build();
+        try {
+            Map<String, Object> dto = chatService.sendMessage(
+                    me.getId(),
+                    userId,
+                    body.text(),
                     body.replyToMessageId(),
                     body.mediaUrl(),
                     body.mediaKind(),
@@ -55,7 +63,6 @@ public class ChatController {
         }
     }
 
-    public record ChatMessageRequest(String text, String replyToMessageId) {}
     public record ChatMessageRequest(
             String text,
             String replyToMessageId,

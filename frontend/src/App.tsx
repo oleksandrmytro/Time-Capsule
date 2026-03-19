@@ -261,10 +261,10 @@ function App() {
 
   // --- Load capsules when navigating to /capsules or /account ---
   useEffect(() => {
-    if ((location.pathname === '/capsules' || location.pathname === '/account') && isAuthenticated) {
+    if ((location.pathname === '/capsules' || (location.pathname === '/account' && !isAdmin)) && isAuthenticated) {
       loadCapsules()
     }
-  }, [location.pathname, isAuthenticated])
+  }, [location.pathname, isAuthenticated, isAdmin])
 
   // --- Load following list after session ---
   const loadFollowing = useCallback(async (userId?: string) => {
@@ -329,11 +329,11 @@ function App() {
           } />
 
           <Route path="/account" element={
-            profile ? <AccountProfileRoute profile={profile} capsules={capsules} onLoadCapsules={loadCapsules} /> : null
+            isAdmin ? <Navigate to="/admin" replace /> : (profile ? <AccountProfileRoute profile={profile} capsules={capsules} onLoadCapsules={loadCapsules} /> : null)
           } />
 
           <Route path="/account/settings" element={
-            <AccountForm profile={profile} onProfileChange={setProfile} onSave={updateProfile} onLogout={logout} />
+            isAdmin ? <Navigate to="/admin" replace /> : <AccountForm profile={profile} onProfileChange={setProfile} onSave={updateProfile} onLogout={logout} />
           } />
 
           <Route path="/create" element={

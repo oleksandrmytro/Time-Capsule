@@ -35,7 +35,11 @@ var userSchema = {
     
     // Timestamps
     createdAt: { bsonType: "date" },
-    updatedAt: { bsonType: "date" }
+    updatedAt: { bsonType: "date" },
+
+    // Admin moderation fields
+    blockedUntil: { bsonType: ["date", "null"] },
+    deletedAt: { bsonType: ["date", "null"] }
   }
 };
 

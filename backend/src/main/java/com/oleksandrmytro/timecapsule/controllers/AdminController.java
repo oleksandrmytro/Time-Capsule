@@ -141,8 +141,8 @@ public class AdminController {
 
     @DeleteMapping("/tags/{id}")
     public ResponseEntity<Void> deleteTag(@PathVariable String id, Authentication auth) {
-        requireAdmin(auth);
-        tagService.delete(id);
+        User actor = requireAdmin(auth);
+        adminService.deleteTag(id, actor);
         return ResponseEntity.ok().build();
     }
 
@@ -208,16 +208,16 @@ public class AdminController {
                                                         @PathVariable String id,
                                                         @RequestBody Map<String, Object> updates,
                                                         Authentication auth) {
-        requireAdmin(auth);
-        return ResponseEntity.ok(adminService.updateCollectionDoc(name, id, updates));
+        User actor = requireAdmin(auth);
+        return ResponseEntity.ok(adminService.updateCollectionDoc(name, id, updates, actor));
     }
 
     @DeleteMapping("/collections/{name}/{id}")
     public ResponseEntity<Void> deleteCollectionDoc(@PathVariable String name,
                                                     @PathVariable String id,
                                                     Authentication auth) {
-        requireAdmin(auth);
-        adminService.deleteCollectionDoc(name, id);
+        User actor = requireAdmin(auth);
+        adminService.deleteCollectionDoc(name, id, actor);
         return ResponseEntity.ok().build();
     }
 
@@ -233,18 +233,18 @@ public class AdminController {
     }
 
     private Map<String, Object> mapUser(User u) {
-        return Map.of(
-            "id", u.getId() != null ? u.getId() : "",
-            "username", u.getUsernameField() != null ? u.getUsernameField() : "",
-            "email", u.getEmail() != null ? u.getEmail() : "",
-            "role", u.getRoleDb() != null ? u.getRoleDb() : "regular",
-            "enabled", u.isEnabled(),
-            "status", userStatus(u),
-            "isOnline", u.isOnline(),
-            "avatarUrl", u.getAvatarUrl() != null ? u.getAvatarUrl() : "",
-            "createdAt", u.getCreatedAt() != null ? u.getCreatedAt().toString() : "",
-            "blockedUntil", u.getBlockedUntil() != null ? u.getBlockedUntil().toString() : "",
-            "deletedAt", u.getDeletedAt() != null ? u.getDeletedAt().toString() : ""
+        return Map.ofEntries(
+            Map.entry("id", u.getId() != null ? u.getId() : ""),
+            Map.entry("username", u.getUsernameField() != null ? u.getUsernameField() : ""),
+            Map.entry("email", u.getEmail() != null ? u.getEmail() : ""),
+            Map.entry("role", u.getRoleDb() != null ? u.getRoleDb() : "regular"),
+            Map.entry("enabled", u.isEnabled()),
+            Map.entry("status", userStatus(u)),
+            Map.entry("isOnline", u.isOnline()),
+            Map.entry("avatarUrl", u.getAvatarUrl() != null ? u.getAvatarUrl() : ""),
+            Map.entry("createdAt", u.getCreatedAt() != null ? u.getCreatedAt().toString() : ""),
+            Map.entry("blockedUntil", u.getBlockedUntil() != null ? u.getBlockedUntil().toString() : ""),
+            Map.entry("deletedAt", u.getDeletedAt() != null ? u.getDeletedAt().toString() : "")
         );
     }
 

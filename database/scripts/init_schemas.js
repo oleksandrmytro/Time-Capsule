@@ -55,7 +55,9 @@ const collectionConfigs = {
     description: "Stores user accounts",
     indexes: [
       // Optional online status index; removed nonexistent isActive field to avoid failures
-      { isOnline: 1 }
+      { isOnline: 1 },
+      { deletedAt: 1 },
+      { blockedUntil: 1 }
     ],
     uniqueIndexes: [
       { email: 1 }
@@ -208,6 +210,19 @@ const collectionConfigs = {
       { email: 1 }
     ]
   },
+
+  admin_audit_logs: {
+    schemaFile: './schemas/AdminAuditLog.js',
+    schemaVar: 'adminAuditLogSchema',
+    shardKey: { createdAt: 1 },
+    description: "Admin audit events",
+    indexes: [
+      { createdAt: -1 },
+      { action: 1, createdAt: -1 },
+      { entityType: 1, createdAt: -1 },
+      { actorEmail: 1, createdAt: -1 }
+    ]
+  },
 };
 
 // --- Create collections with loaded schemas ---
@@ -238,6 +253,7 @@ Object.entries(collectionConfigs).forEach(([collectionName, config]) => {
     else if (config.schemaVar === 'chatMessageSchema' && typeof chatMessageSchema !== 'undefined') schema = chatMessageSchema;
     else if (config.schemaVar === 'tagSchema' && typeof tagSchema !== 'undefined') schema = tagSchema;
     else if (config.schemaVar === 'pendingUserSchema' && typeof pendingUserSchema !== 'undefined') schema = pendingUserSchema;
+    else if (config.schemaVar === 'adminAuditLogSchema' && typeof adminAuditLogSchema !== 'undefined') schema = adminAuditLogSchema;
     else {
       print(`❌ Schema variable ${config.schemaVar} not found after loading ${config.schemaFile}`);
     }

@@ -46,7 +46,7 @@ export default function Header({ isAuthenticated, onAccount, onLogout, onLoadCap
               {!isAdmin && <NavBtn onClick={() => go('/calendar')} icon={CalendarDays}>Calendar</NavBtn>}
               {!isAdmin && <NavBtn onClick={() => go('/chat')} icon={MessageCircle}>Chat</NavBtn>}
               {isAdmin && <NavBtn onClick={() => go('/admin')} icon={Shield}>Admin</NavBtn>}
-              <NavBtn onClick={() => { onAccount(); go('/account') }} icon={User}>Profile</NavBtn>
+              {!isAdmin && <NavBtn onClick={() => { onAccount(); go('/account') }} icon={User}>Profile</NavBtn>}
               <Button variant="ghost" size="sm" onClick={onLogout} className="ml-2 gap-1.5 text-muted-foreground hover:text-destructive">
                 <LogOut className="h-4 w-4" /><span>Logout</span>
               </Button>
@@ -76,7 +76,7 @@ export default function Header({ isAuthenticated, onAccount, onLogout, onLoadCap
                 {!isAdmin && <MobileBtn onClick={() => go('/calendar')} icon={CalendarDays}>Calendar</MobileBtn>}
                 {!isAdmin && <MobileBtn onClick={() => go('/chat')} icon={MessageCircle}>Chat</MobileBtn>}
                 {isAdmin && <MobileBtn onClick={() => go('/admin')} icon={Shield}>Admin Panel</MobileBtn>}
-                <MobileBtn onClick={() => { setMobileOpen(false); onAccount(); navigate('/account') }} icon={User}>Profile</MobileBtn>
+                {!isAdmin && <MobileBtn onClick={() => { setMobileOpen(false); onAccount(); navigate('/account') }} icon={User}>Profile</MobileBtn>}
                 <button onClick={() => { setMobileOpen(false); onLogout() }} className="mt-4 flex items-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 bg-transparent border-none shadow-none w-full text-left">
                   <LogOut className="h-4 w-4" />Logout
                 </button>

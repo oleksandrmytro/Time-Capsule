@@ -59,6 +59,12 @@ public class User implements UserDetails {
     @Field("updatedAt")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
+    @Field("blockedUntil")
+    private LocalDateTime blockedUntil;
+
+    @Field("deletedAt")
+    private LocalDateTime deletedAt;
+
     @Field("avatarUrl")
     private String avatarUrl;
 
@@ -108,7 +114,7 @@ public class User implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        return blockedUntil == null || blockedUntil.isBefore(LocalDateTime.now());
     }
 
     @Override
@@ -212,6 +218,24 @@ public class User implements UserDetails {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public LocalDateTime getBlockedUntil() {
+        return blockedUntil;
+    }
+
+    public void setBlockedUntil(LocalDateTime blockedUntil) {
+        this.blockedUntil = blockedUntil;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public LocalDateTime getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(LocalDateTime deletedAt) {
+        this.deletedAt = deletedAt;
+        this.updatedAt = LocalDateTime.now();
     }
 
     public boolean isOnline() {

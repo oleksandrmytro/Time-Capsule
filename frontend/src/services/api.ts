@@ -94,6 +94,7 @@ export interface MediaItem {
   type: 'image' | 'video'
   thumbnail?: string
   alt?: string
+  meta?: unknown
 }
 
 export interface CommentData {
@@ -319,6 +320,44 @@ export async function uploadChatAttachment(file: File): Promise<ChatAttachmentUp
     throw { status: res.status, message } as ApiError
   }
   return data as ChatAttachmentUploadResponse
+}
+
+export async function uploadTagImage(file: File): Promise<string> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const base = getApiBase()
+  const res = await fetch(`${base}/api/media/tag-image`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : null } catch { data = text }
+  if (!res.ok) {
+    const message = data?.message || data?.error || text || `HTTP ${res.status}`
+    throw { status: res.status, message } as ApiError
+  }
+  return typeof data === 'string' ? data : (data?.url ?? '')
+}
+
+export async function uploadCapsuleAttachment(file: File): Promise<MediaItem> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const base = getApiBase()
+  const res = await fetch(`${base}/api/media/capsule-attachment`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : null } catch { data = text }
+  if (!res.ok) {
+    const message = data?.message || data?.error || text || `HTTP ${res.status}`
+    throw { status: res.status, message } as ApiError
+  }
+  return data as MediaItem
 }
 
 export async function getUserProfile(username: string): Promise<UserProfile> {

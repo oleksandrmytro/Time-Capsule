@@ -23,6 +23,8 @@ public class MediaController {
 
     private static final long COVER_MAX_SIZE = 10L * 1024 * 1024; // 10 MB
     private static final long CHAT_MEDIA_MAX_SIZE = 50L * 1024 * 1024; // 50 MB
+    private static final long TAG_IMAGE_MAX_SIZE = 10L * 1024 * 1024; // 10 MB
+    private static final long CAPSULE_MEDIA_MAX_SIZE = 50L * 1024 * 1024; // 50 MB
 
     private static final Set<String> ALLOWED_COVER_TYPES = Set.of(
             "image/jpeg", "image/png", "image/gif", "image/webp"
@@ -95,6 +97,76 @@ public class MediaController {
                 "url", "/uploads/chat/" + filename,
                 "mediaKind", kind,
                 "mimeType", contentType
+        ));
+    }
+
+    @PostMapping(value = "/tag-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, String>> uploadTagImage(
+            @RequestParam("file") MultipartFile file) throws IOException {
+
+        String contentType = normalizeContentType(file);
+        if (contentType == null || !ALLOWED_COVER_TYPES.contains(contentType)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Only JPEG, PNG, GIF, WebP allowed"));
+        }
+        if (file.getSize() > TAG_IMAGE_MAX_SIZE) {
+            return ResponseEntity.badRequest().body(Map.of("error", "File too large (max 10MB)"));
+        }
+
+        String ext = extensionFrom(contentType, ".jpg");
+        String filename = UUID.randomUUID() + ext;
+
+        Path dir = Path.of(System.getProperty("user.dir"), "uploads", "tags");
+        Files.createDirectories(dir);
+        Path target = dir.resolve(filename);
+        try (InputStream in = file.getInputStream()) {
+            Files.copy(in, target);
+        }
+
+        return ResponseEntity.ok(Map.of("url", "/uploads/tags/" + filename));
+    }
+
+    @PostMapping(value = "/capsule-attachment", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> uploadCapsuleAttachment(
+            @RequestParam("file") MultipartFile file) throws IOException {
+
+        String contentType = normalizeContentType(file);
+        if (contentType == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "File is required"));
+        }
+        if (file.getSize() > CAPSULE_MEDIA_MAX_SIZE) {
+            return ResponseEntity.badRequest().body(Map.of("error", "File too large (max 50MB)"));
+        }
+
+        String type;
+        if (ALLOWED_CHAT_IMAGE_TYPES.contains(contentType)) {
+            type = "image";
+        } else if (ALLOWED_CHAT_VIDEO_TYPES.contains(contentType)) {
+            type = "video";
+        } else {
+            return ResponseEntity.badRequest().body(Map.of("error", "Only image/video files are allowed"));
+        }
+
+        String ext = extensionFrom(contentType, type.equals("video") ? ".mp4" : ".jpg");
+        String filename = UUID.randomUUID() + ext;
+
+        Path dir = Path.of(System.getProperty("user.dir"), "uploads", "capsules");
+        Files.createDirectories(dir);
+        Path target = dir.resolve(filename);
+        try (InputStream in = file.getInputStream()) {
+            Files.copy(in, target);
+        }
+
+        String mediaId = UUID.randomUUID().toString();
+        String url = "/uploads/capsules/" + filename;
+        return ResponseEntity.ok(Map.of(
+                "id", mediaId,
+                "url", url,
+                "type", type,
+                "meta", Map.of(
+                        "mimeType", contentType,
+                        "size", file.getSize(),
+                        "name", file.getOriginalFilename() == null ? filename : file.getOriginalFilename()
+                )
         ));
     }
 
