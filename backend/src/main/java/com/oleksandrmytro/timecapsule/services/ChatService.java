@@ -25,11 +25,13 @@ public class ChatService {
     private final UserService userService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ChatMessageRepository chatMessageRepository;
+    private final EmailService emailService;
 
-    public ChatService(UserService userService, SimpMessagingTemplate messagingTemplate, ChatMessageRepository chatMessageRepository) {
+    public ChatService(UserService userService, SimpMessagingTemplate messagingTemplate, ChatMessageRepository chatMessageRepository, EmailService emailService) {
         this.userService = userService;
         this.messagingTemplate = messagingTemplate;
         this.chatMessageRepository = chatMessageRepository;
+        this.emailService = emailService;
     }
 
     /**
@@ -61,6 +63,7 @@ public class ChatService {
             msg.setReplyToMessageId(new ObjectId(replyToMessageId));
         }
         ChatMessage saved = chatMessageRepository.save(msg);
+        enqueueChatDigestIfNeeded(currentUserId, peerId, saved);
         return deliver(saved, currentUserId, peerId);
     }
 
@@ -73,6 +76,7 @@ public class ChatService {
         msg.setCreatedAt(Instant.now());
         msg.setStatus(ChatMessageStatus.SENT);
         ChatMessage saved = chatMessageRepository.save(msg);
+        enqueueChatDigestIfNeeded(ownerId, granteeId, saved);
         return deliver(saved, ownerId, granteeId);
     }
 
@@ -181,5 +185,46 @@ public class ChatService {
             conv.add(convEntry);
         }
         return conv;
+    }
+
+    private void enqueueChatDigestIfNeeded(String senderId, String recipientId, ChatMessage message) {
+        if (!StringUtils.hasText(senderId) || !StringUtils.hasText(recipientId) || senderId.equals(recipientId)) {
+            return;
+        }
+
+        String actorName = "Someone";
+        try {
+            var sender = userService.getById(senderId);
+            actorName = sender.getUsernameField() != null ? sender.getUsernameField() : sender.getEmail();
+        } catch (IllegalArgumentException ignored) {
+        }
+
+        String preview = buildDigestPreview(message);
+        emailService.enqueueChatDigest(recipientId, actorName, preview);
+    }
+
+    private String buildDigestPreview(ChatMessage message) {
+        if (message == null) {
+            return "Sent you a message";
+        }
+        if (StringUtils.hasText(message.getText())) {
+            return message.getText();
+        }
+        ChatMessageType type;
+        try {
+            type = ChatMessageType.fromValue(message.getType());
+        } catch (IllegalArgumentException ex) {
+            return "Sent you a message";
+        }
+        if (ChatMessageType.IMAGE.equals(type)) {
+            return "Sent you an image";
+        }
+        if (ChatMessageType.VIDEO.equals(type)) {
+            return "Sent you a video";
+        }
+        if (ChatMessageType.CAPSULE_SHARE.equals(type) && StringUtils.hasText(message.getCapsuleTitle())) {
+            return "Shared capsule: " + message.getCapsuleTitle();
+        }
+        return "Sent you a message";
     }
 }

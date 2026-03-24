@@ -8,7 +8,7 @@ import { MediaGallery } from "@/components/media/media-gallery"
 import { ShareCapsuleDialog } from "@/components/capsules/share-capsule-dialog"
 import { ReactionButtons } from "@/components/capsules/reaction-buttons"
 import { CommentsSection } from "@/components/capsules/comments-section"
-import { ArrowLeft, Calendar, Clock, Copy, CheckCircle2, MessageSquare, Heart, Lock, Unlock, Share2 } from "lucide-react"
+import { ArrowLeft, Calendar, Clock, Copy, CheckCircle2, MessageSquare, Heart, Lock, Unlock, Share2, MapPin } from "lucide-react"
 import type { Capsule, ApiError } from "@/services/api"
 import type { UserData } from "@/components/users/user-card"
 
@@ -34,6 +34,11 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
   const prevLocked = useRef(capsule.isLocked)
   const navigate = useNavigate()
   const canShare = isAuthenticated && (capsule.visibility === "public" || !!capsule.shareToken)
+  const hasLocation =
+    Array.isArray(capsule.location?.coordinates) &&
+    capsule.location.coordinates.length === 2 &&
+    Number.isFinite(capsule.location.coordinates[0]) &&
+    Number.isFinite(capsule.location.coordinates[1])
 
   useEffect(() => {
     hasShownUnlockAnimation.current = !capsule.isLocked
@@ -103,6 +108,15 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
     setTimeout(() => setCopied(false), 2000)
   }
 
+  function openOnMap() {
+    const focusCoordinates = hasLocation ? (capsule.location!.coordinates as [number, number]) : undefined
+    navigate(`/map?capsuleId=${encodeURIComponent(capsule.id)}`, {
+      state: focusCoordinates
+        ? { focusCapsuleId: capsule.id, focusCoordinates }
+        : { focusCapsuleId: capsule.id },
+    })
+  }
+
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
 
   return (
@@ -111,6 +125,16 @@ export function CapsuleDetail({ capsule, following, onBack, onUnlock, error, onR
         <div className="flex items-center justify-between">
           <Button variant="ghost" size="sm" onClick={onBack} className="self-start gap-1.5 text-muted-foreground -ml-3"><ArrowLeft className="h-4 w-4" /> Back</Button>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={openOnMap}
+              disabled={!hasLocation}
+              title={hasLocation ? "Show capsule on map" : "No location added to this capsule"}
+            >
+              <MapPin className="h-3.5 w-3.5" /> Map
+            </Button>
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => canShare && setShareOpen(true)} disabled={!canShare} title={canShare ? "Share this capsule" : "Увійдіть, щоб поділитися"}>
               <Share2 className="h-3.5 w-3.5" /> Share
             </Button>

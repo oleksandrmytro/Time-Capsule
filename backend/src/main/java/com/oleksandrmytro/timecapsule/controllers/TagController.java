@@ -41,8 +41,13 @@ public class TagController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<Tag>> search(@RequestParam(name = "q", defaultValue = "") String query) {
-        return ResponseEntity.ok(tagService.search(query));
+    public ResponseEntity<List<Tag>> search(@RequestParam(name = "q", defaultValue = "") String query,
+                                            Authentication auth) {
+        String userId = null;
+        if (auth != null && auth.getPrincipal() instanceof User u) {
+            userId = u.getId();
+        }
+        return ResponseEntity.ok(tagService.searchForUser(userId, query));
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

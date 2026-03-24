@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/capsules")
@@ -44,6 +45,12 @@ public class CapsuleController {
         Instant fromInst = Instant.parse(from);
         Instant toInst = Instant.parse(to);
         return ResponseEntity.ok(capsuleService.listByDateRange(ownerId, fromInst, toInst));
+    }
+
+    @GetMapping("/map")
+    public ResponseEntity<List<Map<String, Object>>> map(Authentication auth) {
+        String ownerId = currentUserId(auth);
+        return ResponseEntity.ok(capsuleService.listMapMarkers(ownerId));
     }
 
     /**

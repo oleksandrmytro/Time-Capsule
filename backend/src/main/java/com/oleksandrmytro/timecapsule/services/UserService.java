@@ -143,4 +143,16 @@ public class UserService {
             return 0;
         }
     }
+
+    public long capsulesCountVisibleToViewer(String userId, String viewerId) {
+        try {
+            ObjectId owner = new ObjectId(userId);
+            if (viewerId != null && viewerId.equals(userId)) {
+                return capsuleRepository.countByOwnerIdAndDeletedAtIsNull(owner);
+            }
+            return capsuleRepository.countByOwnerIdAndVisibilityAndDeletedAtIsNull(owner, "public");
+        } catch (IllegalArgumentException ex) {
+            return 0;
+        }
+    }
 }

@@ -23,6 +23,7 @@ var capsuleSchema = {
     unlockAt: { bsonType: "date" },
     openedAt: { bsonType: "date" },
     expiresAt: { bsonType: "date" },
+    geoMarkerId: { bsonType: "objectId" },
     location: {
       bsonType: "object",
       required: ["type", "coordinates"],

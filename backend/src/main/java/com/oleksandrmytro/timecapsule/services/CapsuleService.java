@@ -18,8 +18,10 @@ import com.oleksandrmytro.timecapsule.repositories.ShareRepository;
 import com.oleksandrmytro.timecapsule.repositories.UserRepository;
 import com.oleksandrmytro.timecapsule.responses.CapsuleResponse;
 import org.bson.types.ObjectId;
+import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.mapping.Field;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -28,13 +30,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 public class CapsuleService {
+
+    private static final String GEO_MARKERS_COLLECTION = "geomarkers";
 
     private final CapsuleRepository capsuleRepository;
     private final MongoTemplate mongoTemplate;
@@ -44,8 +53,9 @@ public class CapsuleService {
     private final ShareRepository shareRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final ChatService chatService;
+    private final EmailService emailService;
 
-    public CapsuleService(CapsuleRepository capsuleRepository, MongoTemplate mongoTemplate, CapsuleNotificationService capsuleNotificationService, UserRepository userRepository, FollowRepository followRepository, ShareRepository shareRepository, SimpMessagingTemplate messagingTemplate, ChatService chatService) {
+    public CapsuleService(CapsuleRepository capsuleRepository, MongoTemplate mongoTemplate, CapsuleNotificationService capsuleNotificationService, UserRepository userRepository, FollowRepository followRepository, ShareRepository shareRepository, SimpMessagingTemplate messagingTemplate, ChatService chatService, EmailService emailService) {
         this.capsuleRepository = capsuleRepository;
         this.mongoTemplate = mongoTemplate;
         this.capsuleNotificationService = capsuleNotificationService;
@@ -54,12 +64,14 @@ public class CapsuleService {
         this.shareRepository = shareRepository;
         this.messagingTemplate = messagingTemplate;
         this.chatService = chatService;
+        this.emailService = emailService;
     }
 
     private void notifyOwner(String ownerId, Capsule capsule) {
         userRepository.findById(ownerId).ifPresent(user ->
                 capsuleNotificationService.sendStatus(user.getId(), toEvent(capsule))
         );
+        emailService.sendCapsuleOpened(ownerId, capsule);
     }
 
     public CapsuleResponse create(String ownerId, CreateCapsuleRequest request) {
@@ -82,10 +94,9 @@ public class CapsuleService {
         capsule.setCoverImageUrl(request.getCoverImageUrl());
         capsule.setMedia(mapMediaRequest(request.getMedia()));
 
-        // Only set location if provided
-        if (request.getLocation() != null) {
-            capsule.setLocation(mapGeo(request.getLocation()));
-        }
+        Capsule.GeoPoint requestedLocation = normalizeGeo(mapGeo(request.getLocation()));
+        capsule.setLocation(null);
+        capsule.setGeoMarkerId(null);
 
         // Генерація токена для спільних капсул
         if (CapsuleVisibility.SHARED.equals(visibility)) {
@@ -97,6 +108,31 @@ public class CapsuleService {
         capsule.setUpdatedAt(Instant.now());
 
         Capsule saved = capsuleRepository.save(capsule);
+        if (requestedLocation != null) {
+            try {
+                ObjectId geoMarkerId = upsertGeoMarker(saved, requestedLocation, visibility);
+                saved.setGeoMarkerId(geoMarkerId);
+                saved.setLocation(null);
+                mongoTemplate.updateFirst(
+                        new Query(Criteria.where("_id").is(saved.getId()).and("ownerId").is(saved.getOwnerId()).and("deletedAt").is(null)),
+                        new Update()
+                                .set("geoMarkerId", geoMarkerId)
+                                .unset("location")
+                                .set("updatedAt", Instant.now()),
+                        Capsule.class
+                );
+            } catch (RuntimeException ex) {
+                // Fallback for resilience: keep location in capsule if geomarker write failed.
+                saved.setLocation(requestedLocation);
+                mongoTemplate.updateFirst(
+                        new Query(Criteria.where("_id").is(saved.getId()).and("ownerId").is(saved.getOwnerId()).and("deletedAt").is(null)),
+                        new Update()
+                                .set("location", requestedLocation)
+                                .set("updatedAt", Instant.now()),
+                        Capsule.class
+                );
+            }
+        }
         return toResponse(saved);
     }
 
@@ -143,9 +179,10 @@ public class CapsuleService {
         // Надсилаємо повідомлення про відкриття тим, хто був у черзі
         ready.forEach(c -> notifyOwner(ownerId, toUnlocked(c)));
 
-        return capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner)
-                .stream()
-                .map(this::toResponse)
+        List<Capsule> capsules = capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner);
+        Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(capsules);
+        return capsules.stream()
+                .map(c -> toResponse(c, locationsByCapsuleId))
                 .collect(Collectors.toList());
     }
 
@@ -155,17 +192,17 @@ public class CapsuleService {
      */
     public List<CapsuleResponse> listUserCapsules(String userId, String requesterId) {
         ObjectId owner = new ObjectId(userId);
+        List<Capsule> capsules;
         if (userId.equals(requesterId)) {
             // Власний профіль — повертаємо всі капсули
-            return capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner)
-                    .stream()
-                    .map(this::toResponse)
-                    .collect(Collectors.toList());
-        }
+            capsules = capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner);
+        } else {
         // Інший користувач — тільки публічні капсули
-        return capsuleRepository.findByOwnerIdAndVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(owner, CapsuleVisibility.PUBLIC.getValue())
-                .stream()
-                .map(this::toResponse)
+            capsules = capsuleRepository.findByOwnerIdAndVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(owner, CapsuleVisibility.PUBLIC.getValue());
+        }
+        Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(capsules);
+        return capsules.stream()
+                .map(c -> toResponse(c, locationsByCapsuleId))
                 .collect(Collectors.toList());
     }
 
@@ -247,10 +284,7 @@ public class CapsuleService {
             throw new IllegalArgumentException("Capsule cannot be unlocked yet or not found");
         }
 
-        capsuleNotificationService.sendStatus(
-                userRepository.findById(ownerId).map(u -> u.getId()).orElse(ownerId),
-                toEvent(updated)
-        );
+        notifyOwner(ownerId, updated);
         return toResponse(updated);
     }
 
@@ -349,6 +383,10 @@ public class CapsuleService {
      * @return
      */
     private CapsuleResponse toResponse(Capsule capsule) {
+        return toResponse(capsule, null);
+    }
+
+    private CapsuleResponse toResponse(Capsule capsule, Map<String, Capsule.GeoPoint> locationsByCapsuleId) {
         CapsuleResponse resp = new CapsuleResponse();
         resp.setId(capsule.getId());
         resp.setOwnerId(capsule.getOwnerId() != null ? capsule.getOwnerId().toHexString() : null);
@@ -371,12 +409,20 @@ public class CapsuleService {
         resp.setUnlockAt(capsule.getUnlockAt());
         resp.setOpenedAt(capsule.getOpenedAt());
         resp.setExpiresAt(capsule.getExpiresAt());
+        resp.setGeoMarkerId(capsule.getGeoMarkerId() != null ? capsule.getGeoMarkerId().toHexString() : null);
         resp.setAllowComments(capsule.getAllowComments());
         resp.setAllowReactions(capsule.getAllowReactions());
         resp.setShareToken(capsule.getShareToken());
         resp.setTags(capsule.getTags());
         resp.setCoverImageUrl(capsule.getCoverImageUrl());
-        resp.setLocation(mapGeo(capsule.getLocation()));
+        Capsule.GeoPoint location = null;
+        if (locationsByCapsuleId != null && capsule.getId() != null) {
+            location = locationsByCapsuleId.get(capsule.getId());
+        }
+        if (location == null) {
+            location = resolveGeoLocationForCapsule(capsule);
+        }
+        resp.setLocation(mapGeo(location));
         resp.setCreatedAt(capsule.getCreatedAt());
         resp.setUpdatedAt(capsule.getUpdatedAt());
         return resp;
@@ -408,17 +454,24 @@ public class CapsuleService {
 
     private CapsuleResponse.GeoPoint mapGeo(Capsule.GeoPoint geo) {
         if (geo == null) return null;
+        Capsule.GeoPoint normalized = normalizeGeo(geo);
+        if (normalized == null) return null;
         CapsuleResponse.GeoPoint g = new CapsuleResponse.GeoPoint();
-        g.setType(geo.getType());
-        g.setCoordinates(geo.getCoordinates());
+        g.setType(normalized.getType());
+        g.setCoordinates(normalized.getCoordinates());
         return g;
     }
 
     private Capsule.GeoPoint mapGeo(CreateCapsuleRequest.GeoPointDto geo) {
         if (geo == null) return null;
+        List<Double> coordinates = geo.getCoordinates();
+        if (coordinates == null || coordinates.size() < 2) return null;
+        Double lon = coordinates.get(0);
+        Double lat = coordinates.get(1);
+        if (lon == null || lat == null) return null;
         Capsule.GeoPoint g = new Capsule.GeoPoint();
-        g.setType(geo.getType());
-        g.setCoordinates(geo.getCoordinates());
+        g.setType(geo.getType() == null || geo.getType().isBlank() ? "Point" : geo.getType());
+        g.setCoordinates(List.of(lon, lat));
         return g;
     }
 
@@ -437,15 +490,319 @@ public class CapsuleService {
                         .and("deletedAt").is(null)
                         .and("unlockAt").gte(from).lte(to)
         );
-        return mongoTemplate.find(query, Capsule.class)
-                .stream()
-                .map(this::toResponse)
+        List<Capsule> capsules = mongoTemplate.find(query, Capsule.class);
+        Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(capsules);
+        return capsules.stream()
+                .map(c -> toResponse(c, locationsByCapsuleId))
                 .collect(Collectors.toList());
     }
 
     /**
      * Повертає капсулу залежно від доступу глядача: власник/спільний доступ або публічна капсула.
      */
+    public List<Map<String, Object>> listMapMarkers(String currentUserId) {
+        ObjectId me = new ObjectId(currentUserId);
+        Set<ObjectId> relatedUsers = new LinkedHashSet<>();
+        relatedUsers.add(me);
+
+        followRepository.findByFollowerIdAndDeletedAtIsNull(me)
+                .forEach(f -> relatedUsers.add(f.getUserId()));
+        followRepository.findByUserIdAndDeletedAtIsNull(me)
+                .forEach(f -> relatedUsers.add(f.getFollowerId()));
+
+        Query query = new Query(
+                Criteria.where("ownerId").in(relatedUsers)
+                        .and("deletedAt").is(null)
+        );
+        query.addCriteria(new Criteria().orOperator(
+                Criteria.where("geoMarkerId").ne(null),
+                Criteria.where("location").ne(null)
+        ));
+
+        List<Capsule> candidates = mongoTemplate.find(query, Capsule.class);
+        candidates.sort(Comparator.comparing(Capsule::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(candidates);
+
+        Set<String> ownerIds = candidates.stream()
+                .filter(c -> c.getOwnerId() != null)
+                .map(c -> c.getOwnerId().toHexString())
+                .collect(Collectors.toSet());
+
+        Map<String, com.oleksandrmytro.timecapsule.models.User> usersById = new HashMap<>();
+        userRepository.findAllById(ownerIds).forEach(u -> usersById.put(u.getId(), u));
+
+        List<Map<String, Object>> markers = new ArrayList<>();
+        for (Capsule capsule : candidates) {
+            if (capsule.getOwnerId() == null) {
+                continue;
+            }
+
+            Capsule.GeoPoint geoPoint = locationsByCapsuleId.get(capsule.getId());
+            if (geoPoint == null || geoPoint.getCoordinates() == null) {
+                continue;
+            }
+
+            List<Double> coordinates = geoPoint.getCoordinates();
+            if (coordinates.size() < 2 || coordinates.get(0) == null || coordinates.get(1) == null) {
+                continue;
+            }
+
+            double lon = coordinates.get(0);
+            double lat = coordinates.get(1);
+            if (lon < -180 || lon > 180 || lat < -90 || lat > 90) {
+                continue;
+            }
+
+            String ownerId = capsule.getOwnerId().toHexString();
+            boolean isOwn = ownerId.equals(currentUserId);
+            boolean isPublic = CapsuleVisibility.PUBLIC.equals(CapsuleVisibility.fromValue(capsule.getVisibility()));
+            if (!isOwn && !isPublic) {
+                continue;
+            }
+
+            com.oleksandrmytro.timecapsule.models.User owner = usersById.get(ownerId);
+
+            Map<String, Object> marker = new HashMap<>();
+            marker.put("id", capsule.getId());
+            marker.put("title", capsule.getTitle());
+            marker.put("ownerId", ownerId);
+            marker.put("ownerName", owner != null
+                    ? (owner.getUsernameField() != null ? owner.getUsernameField() : owner.getEmail())
+                    : "Unknown");
+            marker.put("ownerAvatarUrl", owner != null ? owner.getAvatarUrl() : null);
+            marker.put("visibility", capsule.getVisibility());
+            marker.put("status", capsule.getStatus());
+            marker.put("isLocked", isLocked(capsule.getStatus(), capsule.getUnlockAt()));
+            marker.put("isOwn", isOwn);
+            marker.put("coverImageUrl", capsule.getCoverImageUrl());
+            marker.put("unlockAt", capsule.getUnlockAt());
+            marker.put("openedAt", capsule.getOpenedAt());
+            marker.put("tags", capsule.getTags());
+            marker.put("coordinates", List.of(lon, lat));
+            markers.add(marker);
+        }
+
+        return markers;
+    }
+
+    private Capsule.GeoPoint normalizeGeo(Capsule.GeoPoint geo) {
+        if (geo == null || geo.getCoordinates() == null || geo.getCoordinates().size() < 2) return null;
+        Double lon = geo.getCoordinates().get(0);
+        Double lat = geo.getCoordinates().get(1);
+        if (lon == null || lat == null) return null;
+        if (lon < -180 || lon > 180 || lat < -90 || lat > 90) return null;
+        Capsule.GeoPoint normalized = new Capsule.GeoPoint();
+        normalized.setType("Point");
+        normalized.setCoordinates(List.of(lon, lat));
+        return normalized;
+    }
+
+    private Capsule.GeoPoint resolveGeoLocationForCapsule(Capsule capsule) {
+        Capsule.GeoPoint legacy = normalizeGeo(capsule.getLocation());
+
+        if (capsule.getGeoMarkerId() != null) {
+            Query byMarkerId = new Query(Criteria.where("_id").is(capsule.getGeoMarkerId()).and("deletedAt").is(null));
+            GeoMarkerRecord marker = mongoTemplate.findOne(byMarkerId, GeoMarkerRecord.class, GEO_MARKERS_COLLECTION);
+            Capsule.GeoPoint fromMarker = marker != null ? normalizeGeo(marker.getLocation()) : null;
+            if (fromMarker != null) return fromMarker;
+        }
+
+        if (capsule.getId() != null && ObjectId.isValid(capsule.getId())) {
+            Query byCapsuleId = new Query(Criteria.where("capsuleId").is(new ObjectId(capsule.getId())).and("deletedAt").is(null));
+            GeoMarkerRecord marker = mongoTemplate.findOne(byCapsuleId, GeoMarkerRecord.class, GEO_MARKERS_COLLECTION);
+            Capsule.GeoPoint fromMarker = marker != null ? normalizeGeo(marker.getLocation()) : null;
+            if (fromMarker != null) return fromMarker;
+        }
+
+        return legacy;
+    }
+
+    private Map<String, Capsule.GeoPoint> resolveGeoLocationsByCapsuleId(List<Capsule> capsules) {
+        Map<String, Capsule.GeoPoint> byCapsuleId = new HashMap<>();
+        if (capsules == null || capsules.isEmpty()) return byCapsuleId;
+
+        Set<ObjectId> markerIds = new LinkedHashSet<>();
+        Set<ObjectId> capsuleIds = new LinkedHashSet<>();
+        Map<String, ObjectId> markerIdByCapsuleId = new HashMap<>();
+
+        for (Capsule capsule : capsules) {
+            if (capsule.getId() == null) continue;
+
+            Capsule.GeoPoint legacy = normalizeGeo(capsule.getLocation());
+            if (legacy != null) {
+                byCapsuleId.put(capsule.getId(), legacy);
+            }
+
+            if (capsule.getGeoMarkerId() != null) {
+                markerIds.add(capsule.getGeoMarkerId());
+                markerIdByCapsuleId.put(capsule.getId(), capsule.getGeoMarkerId());
+            }
+            if (ObjectId.isValid(capsule.getId())) {
+                capsuleIds.add(new ObjectId(capsule.getId()));
+            }
+        }
+
+        Map<String, Capsule.GeoPoint> byMarkerId = new HashMap<>();
+        if (!markerIds.isEmpty()) {
+            Query q = new Query(Criteria.where("_id").in(markerIds).and("deletedAt").is(null));
+            List<GeoMarkerRecord> markers = mongoTemplate.find(q, GeoMarkerRecord.class, GEO_MARKERS_COLLECTION);
+            for (GeoMarkerRecord marker : markers) {
+                Capsule.GeoPoint normalized = normalizeGeo(marker.getLocation());
+                if (normalized == null) continue;
+                if (marker.getId() != null) {
+                    byMarkerId.put(marker.getId().toHexString(), normalized);
+                }
+                if (marker.getCapsuleId() != null) {
+                    byCapsuleId.put(marker.getCapsuleId().toHexString(), normalized);
+                }
+            }
+        }
+
+        if (!capsuleIds.isEmpty()) {
+            Query q = new Query(Criteria.where("capsuleId").in(capsuleIds).and("deletedAt").is(null));
+            List<GeoMarkerRecord> markers = mongoTemplate.find(q, GeoMarkerRecord.class, GEO_MARKERS_COLLECTION);
+            for (GeoMarkerRecord marker : markers) {
+                Capsule.GeoPoint normalized = normalizeGeo(marker.getLocation());
+                if (normalized == null || marker.getCapsuleId() == null) continue;
+                byCapsuleId.put(marker.getCapsuleId().toHexString(), normalized);
+            }
+        }
+
+        for (Map.Entry<String, ObjectId> entry : markerIdByCapsuleId.entrySet()) {
+            Capsule.GeoPoint byId = byMarkerId.get(entry.getValue().toHexString());
+            if (byId != null) {
+                byCapsuleId.put(entry.getKey(), byId);
+            }
+        }
+
+        return byCapsuleId;
+    }
+
+    private ObjectId upsertGeoMarker(Capsule capsule, Capsule.GeoPoint location, CapsuleVisibility visibility) {
+        if (capsule == null || capsule.getId() == null || !ObjectId.isValid(capsule.getId())) {
+            throw new IllegalArgumentException("Cannot create geomarker: invalid capsule id");
+        }
+        Capsule.GeoPoint normalized = normalizeGeo(location);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Cannot create geomarker: invalid coordinates");
+        }
+
+        Instant now = Instant.now();
+        ObjectId capsuleId = new ObjectId(capsule.getId());
+        String markerVisibility = "owner";
+        if (CapsuleVisibility.PUBLIC.equals(visibility)) {
+            markerVisibility = "public";
+        } else if (CapsuleVisibility.SHARED.equals(visibility)) {
+            markerVisibility = "shared";
+        }
+
+        Query existingQuery = new Query(Criteria.where("capsuleId").is(capsuleId).and("deletedAt").is(null));
+        GeoMarkerRecord existing = mongoTemplate.findOne(existingQuery, GeoMarkerRecord.class, GEO_MARKERS_COLLECTION);
+        if (existing != null && existing.getId() != null) {
+            mongoTemplate.updateFirst(
+                    new Query(Criteria.where("_id").is(existing.getId())),
+                    new Update()
+                            .set("location", normalized)
+                            .set("visibility", markerVisibility)
+                            .set("updatedAt", now)
+                            .unset("deletedAt"),
+                    GEO_MARKERS_COLLECTION
+            );
+            return existing.getId();
+        }
+
+        GeoMarkerRecord marker = new GeoMarkerRecord();
+        marker.setCapsuleId(capsuleId);
+        marker.setLocation(normalized);
+        marker.setVisibility(markerVisibility);
+        marker.setCreatedAt(now);
+        marker.setUpdatedAt(now);
+        GeoMarkerRecord saved = mongoTemplate.save(marker, GEO_MARKERS_COLLECTION);
+        if (saved == null || saved.getId() == null) {
+            throw new IllegalStateException("Failed to save geomarker");
+        }
+        return saved.getId();
+    }
+
+    private static class GeoMarkerRecord {
+        @Id
+        private ObjectId id;
+
+        @Field("capsuleId")
+        private ObjectId capsuleId;
+
+        @Field("location")
+        private Capsule.GeoPoint location;
+
+        @Field("visibility")
+        private String visibility;
+
+        @Field("createdAt")
+        private Instant createdAt;
+
+        @Field("updatedAt")
+        private Instant updatedAt;
+
+        @Field("deletedAt")
+        private Instant deletedAt;
+
+        public ObjectId getId() {
+            return id;
+        }
+
+        public void setId(ObjectId id) {
+            this.id = id;
+        }
+
+        public ObjectId getCapsuleId() {
+            return capsuleId;
+        }
+
+        public void setCapsuleId(ObjectId capsuleId) {
+            this.capsuleId = capsuleId;
+        }
+
+        public Capsule.GeoPoint getLocation() {
+            return location;
+        }
+
+        public void setLocation(Capsule.GeoPoint location) {
+            this.location = location;
+        }
+
+        public String getVisibility() {
+            return visibility;
+        }
+
+        public void setVisibility(String visibility) {
+            this.visibility = visibility;
+        }
+
+        public Instant getCreatedAt() {
+            return createdAt;
+        }
+
+        public void setCreatedAt(Instant createdAt) {
+            this.createdAt = createdAt;
+        }
+
+        public Instant getUpdatedAt() {
+            return updatedAt;
+        }
+
+        public void setUpdatedAt(Instant updatedAt) {
+            this.updatedAt = updatedAt;
+        }
+
+        public Instant getDeletedAt() {
+            return deletedAt;
+        }
+
+        public void setDeletedAt(Instant deletedAt) {
+            this.deletedAt = deletedAt;
+        }
+    }
+
     public CapsuleResponse getAccessible(String id, String viewerId) {
         // Якщо користувач авторизований, спочатку пробуємо власницький/шаринг-режим
         if (viewerId != null) {

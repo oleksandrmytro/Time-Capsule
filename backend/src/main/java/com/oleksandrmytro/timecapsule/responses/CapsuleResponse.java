@@ -15,6 +15,7 @@ public class CapsuleResponse {
     private Instant unlockAt;
     private Instant openedAt;
     private Instant expiresAt;
+    private String geoMarkerId;
     private GeoPoint location;
     private Boolean allowComments;
     private Boolean allowReactions;
@@ -46,6 +47,8 @@ public class CapsuleResponse {
     public void setOpenedAt(Instant openedAt) { this.openedAt = openedAt; }
     public Instant getExpiresAt() { return expiresAt; }
     public void setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; }
+    public String getGeoMarkerId() { return geoMarkerId; }
+    public void setGeoMarkerId(String geoMarkerId) { this.geoMarkerId = geoMarkerId; }
     public GeoPoint getLocation() { return location; }
     public void setLocation(GeoPoint location) { this.location = location; }
     public Boolean getAllowComments() { return allowComments; }

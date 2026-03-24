@@ -46,7 +46,10 @@ services:
       - CHOKIDAR_INTERVAL=300
       - VITE_API_URL=http://localhost/api
     volumes:
-      - ../frontend/src:/app/src:cached
+      - ../frontend:/app:cached
+      - node-mod-cache:/app/node_modules
+    command: >
+      sh -lc "bun install && bun run dev -- --host 0.0.0.0"
     expose: ["5173"]
     networks: [app-net]
 

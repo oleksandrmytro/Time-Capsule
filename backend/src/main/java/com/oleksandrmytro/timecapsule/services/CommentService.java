@@ -26,12 +26,14 @@ public class CommentService {
     private final CapsuleRepository capsuleRepository;
     private final UserRepository userRepository;
     private final MongoTemplate mongoTemplate;
+    private final EmailService emailService;
 
-    public CommentService(CommentRepository commentRepository, CapsuleRepository capsuleRepository, UserRepository userRepository, MongoTemplate mongoTemplate) {
+    public CommentService(CommentRepository commentRepository, CapsuleRepository capsuleRepository, UserRepository userRepository, MongoTemplate mongoTemplate, EmailService emailService) {
         this.commentRepository = commentRepository;
         this.capsuleRepository = capsuleRepository;
         this.userRepository = userRepository;
         this.mongoTemplate = mongoTemplate;
+        this.emailService = emailService;
     }
 
     /**
@@ -61,6 +63,7 @@ public class CommentService {
         comment.setUpdatedAt(Instant.now());
 
         Comment saved = commentRepository.save(comment);
+        notifyCapsuleOwnerAboutComment(userId, capsule);
         return toResponse(saved);
     }
 
@@ -162,6 +165,20 @@ public class CommentService {
         });
 
         return resp;
+    }
+
+    private void notifyCapsuleOwnerAboutComment(String commenterId, Capsule capsule) {
+        if (capsule == null || capsule.getOwnerId() == null) {
+            return;
+        }
+        String ownerId = capsule.getOwnerId().toHexString();
+        if (ownerId.equals(commenterId)) {
+            return;
+        }
+        String actorName = userRepository.findById(commenterId)
+                .map(user -> user.getUsernameField() != null ? user.getUsernameField() : user.getEmail())
+                .orElse("Someone");
+        emailService.enqueueCommentDigest(ownerId, actorName, capsule.getTitle());
     }
 }
 

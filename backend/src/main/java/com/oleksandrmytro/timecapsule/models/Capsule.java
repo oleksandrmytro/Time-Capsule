@@ -43,6 +43,9 @@ public class Capsule {
     @Field("expiresAt")
     private Instant expiresAt;
 
+    @Field("geoMarkerId")
+    private ObjectId geoMarkerId;
+
     @Field("location")
     private GeoPoint location;
 
@@ -97,6 +100,8 @@ public class Capsule {
     public void setOpenedAt(Instant openedAt) { this.openedAt = openedAt; }
     public Instant getExpiresAt() { return expiresAt; }
     public void setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; }
+    public ObjectId getGeoMarkerId() { return geoMarkerId; }
+    public void setGeoMarkerId(ObjectId geoMarkerId) { this.geoMarkerId = geoMarkerId; }
     public GeoPoint getLocation() { return location; }
     public void setLocation(GeoPoint location) { this.location = location; }
     public Boolean getAllowComments() { return allowComments; }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Menu, X, Timer, User, LogOut, Plus, Archive, Search, MessageCircle, CalendarDays, Shield } from 'lucide-react'
+import { Menu, X, Timer, User, LogOut, Plus, Archive, Search, MessageCircle, CalendarDays, Shield, Map } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface HeaderProps {
@@ -44,6 +44,7 @@ export default function Header({ isAuthenticated, onAccount, onLogout, onLoadCap
               {!isAdmin && <NavBtn onClick={() => go('/create')} icon={Plus}>Create</NavBtn>}
               {!isAdmin && <NavBtn onClick={() => go('/search')} icon={Search}>Search</NavBtn>}
               {!isAdmin && <NavBtn onClick={() => go('/calendar')} icon={CalendarDays}>Calendar</NavBtn>}
+              {!isAdmin && <NavBtn onClick={() => go('/map')} icon={Map}>Map</NavBtn>}
               {!isAdmin && <NavBtn onClick={() => go('/chat')} icon={MessageCircle}>Chat</NavBtn>}
               {isAdmin && <NavBtn onClick={() => go('/admin')} icon={Shield}>Admin</NavBtn>}
               {!isAdmin && <NavBtn onClick={() => { onAccount(); go('/account') }} icon={User}>Profile</NavBtn>}
@@ -74,6 +75,7 @@ export default function Header({ isAuthenticated, onAccount, onLogout, onLoadCap
                 {!isAdmin && <MobileBtn onClick={() => go('/create')} icon={Plus}>Create Capsule</MobileBtn>}
                 {!isAdmin && <MobileBtn onClick={() => go('/search')} icon={Search}>Search Users</MobileBtn>}
                 {!isAdmin && <MobileBtn onClick={() => go('/calendar')} icon={CalendarDays}>Calendar</MobileBtn>}
+                {!isAdmin && <MobileBtn onClick={() => go('/map')} icon={Map}>Map</MobileBtn>}
                 {!isAdmin && <MobileBtn onClick={() => go('/chat')} icon={MessageCircle}>Chat</MobileBtn>}
                 {isAdmin && <MobileBtn onClick={() => go('/admin')} icon={Shield}>Admin Panel</MobileBtn>}
                 {!isAdmin && <MobileBtn onClick={() => { setMobileOpen(false); onAccount(); navigate('/account') }} icon={User}>Profile</MobileBtn>}

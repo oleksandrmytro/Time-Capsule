@@ -118,3 +118,71 @@
 /* Safety for long words */
 .break-words { word-break: break-word; }
 .whitespace-pre-wrap { white-space: pre-wrap; }
+
+/* Leaflet marker styling */
+.capsule-leaflet-marker-wrapper {
+  background: transparent;
+  border: none;
+}
+
+.capsule-pin {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 6px 14px rgba(2, 6, 23, 0.4);
+}
+
+.capsule-pin::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -13px;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+}
+
+.capsule-pin-dot {
+  position: absolute;
+  inset: 12px;
+  border-radius: 9999px;
+  background: #ffffff;
+}
+
+.capsule-pin-own {
+  background: linear-gradient(145deg, #10b981, #059669);
+}
+
+.capsule-pin-network {
+  background: linear-gradient(145deg, #0ea5e9, #0284c7);
+}
+
+.capsule-leaflet-cluster-wrapper {
+  background: transparent;
+  border: none;
+}
+
+.capsule-cluster {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 9999px;
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.45);
+}
+
+.capsule-cluster-own {
+  background: radial-gradient(circle at 35% 30%, #34d399, #059669);
+}
+
+.capsule-cluster-network {
+  background: radial-gradient(circle at 35% 30%, #38bdf8, #0284c7);
+}

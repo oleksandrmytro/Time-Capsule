@@ -139,7 +139,7 @@ public class UserController {
         resp.setDisplayName(user.getUsernameField());
         resp.setFollowersCount(userService.followersCount(user.getId()));
         resp.setFollowingCount(userService.followingCount(user.getId()));
-        resp.setCapsulesCount(userService.capsulesCount(user.getId()));
+        resp.setCapsulesCount(userService.capsulesCountVisibleToViewer(user.getId(), currentUserId));
         if (currentUserId != null && !currentUserId.equals(user.getId())) {
             resp.setFollowing(userService.isFollowing(user.getId(), currentUserId));
         } else {

@@ -2,16 +2,24 @@ package com.oleksandrmytro.timecapsule.services;
 
 import com.oleksandrmytro.timecapsule.models.Tag;
 import com.oleksandrmytro.timecapsule.repositories.TagRepository;
+import org.bson.Document;
+import org.bson.types.ObjectId;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -58,16 +66,37 @@ public class TagService implements CommandLineRunner {
     );
 
     private final TagRepository tagRepository;
+    private final MongoTemplate mongoTemplate;
 
-    public TagService(TagRepository tagRepository) {
+    public TagService(TagRepository tagRepository, MongoTemplate mongoTemplate) {
         this.tagRepository = tagRepository;
+        this.mongoTemplate = mongoTemplate;
     }
 
     @Override
     public void run(String... args) {
         ensureTagImages();
         seedDefaultTags();
+        normalizeCreatedByType();
         fixExistingPlaceholders();
+    }
+
+    private void normalizeCreatedByType() {
+        Query query = new Query(Criteria.where("createdBy").type(2)); // string
+        List<Document> invalidDocs = mongoTemplate.find(query, Document.class, "tags");
+        for (Document doc : invalidDocs) {
+            Object id = doc.get("_id");
+            Object createdBy = doc.get("createdBy");
+            if (id == null || createdBy == null) continue;
+            String createdByValue = String.valueOf(createdBy);
+
+            Query byId = new Query(Criteria.where("_id").is(id));
+            if (ObjectId.isValid(createdByValue)) {
+                mongoTemplate.updateFirst(byId, new Update().set("createdBy", new ObjectId(createdByValue)), "tags");
+            } else {
+                mongoTemplate.updateFirst(byId, new Update().unset("createdBy"), "tags");
+            }
+        }
     }
 
     /**
@@ -167,8 +196,13 @@ public class TagService implements CommandLineRunner {
             String url = d[1];
             if (existing != null) {
                 if (existing.getImageUrl() == null || isExternal(existing.getImageUrl())) {
-                    existing.setImageUrl(url);
-                    tagRepository.save(existing);
+                    mongoTemplate.updateFirst(
+                            new Query(Criteria.where("name").is(existing.getName())),
+                            new Update()
+                                    .set("imageUrl", url)
+                                    .set("isSystem", true),
+                            Tag.class
+                    );
                 }
                 continue;
             }
@@ -179,10 +213,32 @@ public class TagService implements CommandLineRunner {
 
     private void fixExistingPlaceholders() {
         tagRepository.findAll().forEach(tag -> {
-            if (tag.getImageUrl() == null || isExternal(tag.getImageUrl())) {
+            String current = tag.getImageUrl();
+            if (tag.isSystem()) {
                 String fallback = "/static/tags/" + tag.getName().toLowerCase() + ".jpg";
-                tag.setImageUrl(fallback);
-                tagRepository.save(tag);
+                if (!fallback.equals(current) || isExternal(current)) {
+                    mongoTemplate.updateFirst(
+                            new Query(Criteria.where("name").is(tag.getName())),
+                            new Update()
+                                    .set("imageUrl", fallback)
+                                    .set("isSystem", true),
+                            Tag.class
+                    );
+                }
+                return;
+            }
+
+            boolean invalidCustomImage =
+                    isExternal(current)
+                            || isStaticTagImage(current)
+                            || isMissingUploadAsset(current);
+
+            if (invalidCustomImage && current != null) {
+                mongoTemplate.updateFirst(
+                        new Query(Criteria.where("name").is(tag.getName())),
+                        new Update().unset("imageUrl"),
+                        Tag.class
+                );
             }
         });
     }
@@ -194,6 +250,48 @@ public class TagService implements CommandLineRunner {
                 || lower.contains("placeholder.com") || lower.contains("unsplash.com");
     }
 
+    private boolean isStaticTagImage(String url) {
+        return url != null && url.startsWith("/static/tags/");
+    }
+
+    private boolean isMissingUploadAsset(String url) {
+        if (url == null || !url.startsWith("/uploads/")) return false;
+        String relative = url.substring("/uploads/".length());
+        try {
+            relative = URLDecoder.decode(relative, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return true;
+        }
+
+        Path uploadsRoot = Path.of(System.getProperty("user.dir"), "uploads").toAbsolutePath().normalize();
+        Path absolute = uploadsRoot.resolve(relative).normalize();
+        if (absolute.startsWith(uploadsRoot) && Files.exists(absolute)) {
+            return false;
+        }
+
+        ClassPathResource classpathAsset = new ClassPathResource("static/uploads/" + relative);
+        return !classpathAsset.exists();
+    }
+
+    private List<Tag> sanitizeAndFilterVisible(List<Tag> tags, String userId) {
+        List<Tag> visible = new ArrayList<>();
+        boolean hasUser = userId != null && ObjectId.isValid(userId);
+        for (Tag tag : tags) {
+            if (tag == null) continue;
+            boolean isOwn = hasUser && tag.getCreatedBy() != null && userId.equals(tag.getCreatedBy().toHexString());
+            if (!tag.isSystem() && !isOwn) continue;
+
+            if (!tag.isSystem()) {
+                String imageUrl = tag.getImageUrl();
+                if (isStaticTagImage(imageUrl) || isMissingUploadAsset(imageUrl)) {
+                    tag.setImageUrl(null);
+                }
+            }
+            visible.add(tag);
+        }
+        return visible;
+    }
+
     private String colorForName(String name) { return ""; } // unused
     private String svgPlaceholder(String text, String color) { return ""; } // unused
 
@@ -202,27 +300,46 @@ public class TagService implements CommandLineRunner {
     }
 
     public List<Tag> listForUser(String userId) {
-        return tagRepository.findByIsSystemTrueOrCreatedBy(userId);
+        if (userId == null || !ObjectId.isValid(userId)) {
+            return listSystem();
+        }
+        return sanitizeAndFilterVisible(tagRepository.findByIsSystemTrueOrCreatedBy(new ObjectId(userId)), userId);
     }
 
     public List<Tag> listSystem() {
-        return tagRepository.findByIsSystemTrue();
+        return sanitizeAndFilterVisible(tagRepository.findByIsSystemTrue(), null);
     }
 
     public List<Tag> search(String query) {
-        if (query == null || query.isBlank()) return listAll();
-        return tagRepository.findByNameContainingIgnoreCase(query.trim());
+        return searchForUser(null, query);
+    }
+
+    public List<Tag> searchForUser(String userId, String query) {
+        String q = query == null ? "" : query.trim().toLowerCase();
+        List<Tag> visible = listForUser(userId);
+        if (q.isBlank()) return visible;
+
+        List<Tag> filtered = new ArrayList<>();
+        for (Tag tag : visible) {
+            if (tag.getName() != null && tag.getName().toLowerCase().contains(q)) {
+                filtered.add(tag);
+            }
+        }
+        return filtered;
     }
 
     public Tag create(String name, String imageUrl, String createdBy) {
         if (tagRepository.existsByNameIgnoreCase(name)) {
             throw new IllegalArgumentException("Tag '" + name + "' already exists");
         }
+        if (createdBy == null || !ObjectId.isValid(createdBy)) {
+            throw new IllegalArgumentException("Invalid tag creator id");
+        }
         Tag tag = new Tag();
         tag.setName(name.trim());
         tag.setImageUrl(imageUrl);
         tag.setSystem(false);
-        tag.setCreatedBy(createdBy);
+        tag.setCreatedBy(new ObjectId(createdBy));
         return tagRepository.save(tag);
     }
 

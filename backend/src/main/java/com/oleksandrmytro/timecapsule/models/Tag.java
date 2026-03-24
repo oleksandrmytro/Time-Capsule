@@ -1,5 +1,8 @@
 package com.oleksandrmytro.timecapsule.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -23,7 +26,7 @@ public class Tag {
     private boolean isSystem;
 
     @Field("createdBy")
-    private String createdBy;
+    private ObjectId createdBy;
 
     @Field("createdAt")
     private Instant createdAt = Instant.now();
@@ -45,8 +48,22 @@ public class Tag {
     public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
     public boolean isSystem() { return isSystem; }
     public void setSystem(boolean system) { isSystem = system; }
-    public String getCreatedBy() { return createdBy; }
-    public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
+    @JsonIgnore
+    public ObjectId getCreatedBy() { return createdBy; }
+    public void setCreatedBy(ObjectId createdBy) { this.createdBy = createdBy; }
+
+    @JsonProperty("createdBy")
+    public String getCreatedByHex() { return createdBy != null ? createdBy.toHexString() : null; }
+
+    @JsonProperty("createdBy")
+    public void setCreatedByHex(String createdBy) {
+        if (createdBy == null || createdBy.isBlank()) {
+            this.createdBy = null;
+            return;
+        }
+        this.createdBy = new ObjectId(createdBy);
+    }
+
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

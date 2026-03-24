@@ -18,6 +18,7 @@ import { UserProfileView } from './components/users/user-profile'
 import { ChatList } from './components/chat/chat-list'
 import { ChatWindow } from './components/chat/chat-window'
 import { CalendarView } from './components/capsules/calendar-view'
+import { CapsulesMapView } from './components/capsules/capsules-map-view'
 import { AdminPanel } from './components/admin/admin-panel'
 import {
   apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser, getUserProfile, getFollowing, getFollowers, getUserCapsules, followUser, unfollowUser,
@@ -386,6 +387,10 @@ function App() {
 
           <Route path="/calendar" element={
             isAdmin ? <Navigate to="/admin" replace /> : <CalendarView onSelectCapsule={viewCapsule} />
+          } />
+
+          <Route path="/map" element={
+            isAdmin ? <Navigate to="/admin" replace /> : <CapsulesMapView />
           } />
 
           <Route path="/admin/*" element={

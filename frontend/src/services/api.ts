@@ -97,6 +97,11 @@ export interface MediaItem {
   meta?: unknown
 }
 
+export interface GeoPoint {
+  type: 'Point'
+  coordinates: [number, number] // [lon, lat]
+}
+
 export interface CommentData {
   id: string
   capsuleId: string
@@ -124,13 +129,14 @@ export interface Capsule {
   unlockAt: string
   openedAt?: string | null
   expiresAt?: string | null
+  geoMarkerId?: string | null
   shareToken?: string | null
   allowComments?: boolean
   allowReactions?: boolean
   tags?: string[] | null
   coverImageUrl?: string | null
   media?: MediaItem[] | null
-  location?: unknown
+  location?: GeoPoint | null
 }
 
 export interface CreateCapsulePayload {
@@ -145,7 +151,24 @@ export interface CreateCapsulePayload {
   tags?: string[] | null
   coverImageUrl?: string | null
   media?: unknown
-  location?: unknown
+  location?: GeoPoint | null
+}
+
+export interface CapsuleMapMarker {
+  id: string
+  title: string
+  ownerId: string
+  ownerName: string
+  ownerAvatarUrl?: string | null
+  visibility: 'private' | 'public' | 'shared'
+  status: 'draft' | 'sealed' | 'opened'
+  isLocked: boolean
+  isOwn: boolean
+  coverImageUrl?: string | null
+  unlockAt?: string | null
+  openedAt?: string | null
+  tags?: string[] | null
+  coordinates: [number, number] // [lon, lat]
 }
 
 /* ── Helpers ───────────────────────────── */
@@ -245,6 +268,10 @@ export async function createCapsule(capsuleData: CreateCapsulePayload): Promise<
 // Повертає список капсул поточного користувача
 export async function listMyCapsules(): Promise<Capsule[]> {
   return apiRequest('/api/capsules', { method: 'GET' })
+}
+
+export async function listCapsuleMapMarkers(): Promise<CapsuleMapMarker[]> {
+  return apiRequest('/api/capsules/map', { method: 'GET' })
 }
 
 // Повертає деталі капсули за її ID

@@ -47,6 +47,21 @@ export function TagPicker({ selectedTags, onTagsChange, onCoverSuggestion }: Tag
     return url
   }
 
+  const resolveTagImage = (tag: Tag) => {
+    const url = tag.imageUrl
+    if (!url) return undefined
+
+    if (tag.isSystem) {
+      return url.startsWith("/static/tags/") ? url : undefined
+    }
+
+    if (url.startsWith("/uploads/tags/") || url.startsWith("/uploads/")) {
+      return url
+    }
+
+    return undefined
+  }
+
   const toggleTag = useCallback((tagName: string, imageUrl?: string | null) => {
     if (selectedTags.includes(tagName)) {
       onTagsChange(selectedTags.filter(t => t !== tagName))
@@ -68,8 +83,9 @@ export function TagPicker({ selectedTags, onTagsChange, onCoverSuggestion }: Tag
       onTagsChange([...selectedTags, tag.name]) // Add new tag to selection
 
       // Validate tag structure
-      if (tag.imageUrl && onCoverSuggestion) {
-         onCoverSuggestion(tag.imageUrl)
+      const safeImage = resolveTagImage(tag)
+      if (safeImage && onCoverSuggestion) {
+         onCoverSuggestion(safeImage)
       }
 
       setCustomTagName("")
@@ -188,21 +204,22 @@ export function TagPicker({ selectedTags, onTagsChange, onCoverSuggestion }: Tag
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[240px] overflow-y-auto pr-1">
           {filteredTags.map(tag => {
             const isSelected = selectedTags.includes(tag.name)
+            const imageUrl = resolveTagImage(tag)
             return (
               <button
                 key={tag.id}
                 type="button"
-                onClick={() => toggleTag(tag.name, tag.imageUrl)}
+                onClick={() => toggleTag(tag.name, imageUrl)}
                 className={`group relative flex flex-col items-center gap-1.5 rounded-xl border p-2 text-center transition-all cursor-pointer bg-transparent shadow-none ${
                   isSelected
                     ? "border-accent bg-accent/10 ring-1 ring-accent/30"
                     : "border-border hover:border-accent/40 hover:bg-muted/50"
                 }`}
               >
-                {tag.imageUrl ? (
+                {imageUrl ? (
                   <div className="relative h-12 w-full overflow-hidden rounded-lg">
                     <img
-                      src={resolveUrl(tag.imageUrl)}
+                      src={resolveUrl(imageUrl)}
                       alt={tag.name}
                       className="h-full w-full object-cover"
                       loading="lazy"
