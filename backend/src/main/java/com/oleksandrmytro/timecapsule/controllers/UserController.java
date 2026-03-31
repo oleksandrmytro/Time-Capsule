@@ -1,5 +1,7 @@
 package com.oleksandrmytro.timecapsule.controllers;
 
+import com.oleksandrmytro.timecapsule.dto.ConfirmPasswordChangeDto;
+import com.oleksandrmytro.timecapsule.dto.ChangePasswordDto;
 import com.oleksandrmytro.timecapsule.dto.UpdateProfileRequest;
 import com.oleksandrmytro.timecapsule.models.User;
 import com.oleksandrmytro.timecapsule.responses.CapsuleResponse;
@@ -7,6 +9,7 @@ import com.oleksandrmytro.timecapsule.responses.UserProfileResponse;
 import com.oleksandrmytro.timecapsule.services.CapsuleService;
 import com.oleksandrmytro.timecapsule.services.UserService;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -28,7 +31,7 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<UserProfileResponse> me(Authentication auth, HttpServletResponse response) {
+    public ResponseEntity<UserProfileResponse> me(Authentication auth, HttpServletRequest request, HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
         response.setHeader("Pragma", "no-cache");
         response.setHeader("Expires", "0");
@@ -36,7 +39,11 @@ public class UserController {
         if (auth == null || !(auth.getPrincipal() instanceof User user)) {
             return ResponseEntity.status(401).build();
         }
-        return ResponseEntity.ok(toResponse(user, user.getId()));
+        UserProfileResponse profile = toResponse(user, user.getId());
+        profile.setImpersonating(Boolean.TRUE.equals(request.getAttribute("impersonation.active")));
+        profile.setActingAdminId((String) request.getAttribute("impersonation.adminId"));
+        profile.setActingAdminEmail((String) request.getAttribute("impersonation.adminEmail"));
+        return ResponseEntity.ok(profile);
     }
 
     @PatchMapping("/me")
@@ -46,6 +53,33 @@ public class UserController {
         }
         User updated = userService.updateProfile(user.getId(), req);
         return ResponseEntity.ok(toResponse(updated, user.getId()));
+    }
+
+    @PostMapping("/me/password/request-code")
+    public ResponseEntity<String> requestPasswordChangeCode(Authentication auth) {
+        if (auth == null || !(auth.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(401).build();
+        }
+        userService.requestPasswordChangeCode(user.getId());
+        return ResponseEntity.ok("Password change code sent to your email");
+    }
+
+    @PostMapping("/me/password/confirm")
+    public ResponseEntity<String> confirmPasswordChange(@Valid @RequestBody ConfirmPasswordChangeDto req, Authentication auth) {
+        if (auth == null || !(auth.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(401).build();
+        }
+        userService.confirmPasswordChange(user.getId(), req.getCode(), req.getNewPassword());
+        return ResponseEntity.ok("Password changed successfully");
+    }
+
+    @PostMapping("/me/password/change")
+    public ResponseEntity<String> changePassword(@Valid @RequestBody ChangePasswordDto req, Authentication auth) {
+        if (auth == null || !(auth.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(401).build();
+        }
+        userService.changePasswordWithCurrent(user.getId(), req.getCurrentPassword(), req.getNewPassword());
+        return ResponseEntity.ok("Password changed successfully");
     }
 
     @GetMapping("/search")
@@ -136,6 +170,7 @@ public class UserController {
         resp.setCreatedAt(user.getCreatedAt());
         resp.setUpdatedAt(user.getUpdatedAt());
         resp.setOnline(user.isOnline());
+        resp.setMustChangePassword(user.isMustChangePassword());
         resp.setDisplayName(user.getUsernameField());
         resp.setFollowersCount(userService.followersCount(user.getId()));
         resp.setFollowingCount(userService.followingCount(user.getId()));

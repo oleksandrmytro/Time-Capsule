@@ -20,11 +20,34 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class TagService implements CommandLineRunner {
+    private static final String STATIC_TAGS_PREFIX = "/static/tags/";
+    private static final String UPLOADS_PREFIX = "/uploads/";
+    private static final String[][] DEFAULT_TAG_SPECS = {
+            {"Travel",      "/static/tags/travel.jpg"},
+            {"Birthday",    "/static/tags/birthday.jpg"},
+            {"Wedding",     "/static/tags/wedding.jpg"},
+            {"Graduation",  "/static/tags/graduation.jpg"},
+            {"Family",      "/static/tags/family.jpg"},
+            {"Friends",     "/static/tags/friends.jpg"},
+            {"Love",        "/static/tags/love.jpg"},
+            {"Memory",      "/static/tags/memory.jpg"},
+            {"Achievement", "/static/tags/achievement.jpg"},
+            {"Holiday",     "/static/tags/holiday.jpg"},
+            {"Music",       "/static/tags/music.jpg"},
+            {"Nature",      "/static/tags/nature.jpg"},
+            {"Food",        "/static/tags/food.jpg"},
+            {"Sport",       "/static/tags/sport.jpg"},
+            {"Art",         "/static/tags/art.jpg"},
+            {"Pet",         "/static/tags/pet.jpg"},
+    };
 
     // emoji for each default tag — rendered in SVG fallback
     private static final Map<String, String> TAG_EMOJI = Map.ofEntries(
@@ -76,9 +99,15 @@ public class TagService implements CommandLineRunner {
     @Override
     public void run(String... args) {
         ensureTagImages();
+        normalizeLegacySystemFlag();
         seedDefaultTags();
         normalizeCreatedByType();
         fixExistingPlaceholders();
+    }
+
+    private void normalizeLegacySystemFlag() {
+        Query legacySystemTrue = new Query(Criteria.where("system").is(true));
+        mongoTemplate.updateMulti(legacySystemTrue, new Update().set("isSystem", true), "tags");
     }
 
     private void normalizeCreatedByType() {
@@ -172,38 +201,21 @@ public class TagService implements CommandLineRunner {
     }
 
     private void seedDefaultTags() {
-        String[][] defaults = {
-            {"Travel",      "/static/tags/travel.jpg"},
-            {"Birthday",    "/static/tags/birthday.jpg"},
-            {"Wedding",     "/static/tags/wedding.jpg"},
-            {"Graduation",  "/static/tags/graduation.jpg"},
-            {"Family",      "/static/tags/family.jpg"},
-            {"Friends",     "/static/tags/friends.jpg"},
-            {"Love",        "/static/tags/love.jpg"},
-            {"Memory",      "/static/tags/memory.jpg"},
-            {"Achievement", "/static/tags/achievement.jpg"},
-            {"Holiday",     "/static/tags/holiday.jpg"},
-            {"Music",       "/static/tags/music.jpg"},
-            {"Nature",      "/static/tags/nature.jpg"},
-            {"Food",        "/static/tags/food.jpg"},
-            {"Sport",       "/static/tags/sport.jpg"},
-            {"Art",         "/static/tags/art.jpg"},
-            {"Pet",         "/static/tags/pet.jpg"},
-        };
-
-        for (String[] d : defaults) {
+        for (String[] d : DEFAULT_TAG_SPECS) {
             Tag existing = tagRepository.findByNameIgnoreCase(d[0]).orElse(null);
             String url = d[1];
             if (existing != null) {
-                if (existing.getImageUrl() == null || isExternal(existing.getImageUrl())) {
-                    mongoTemplate.updateFirst(
-                            new Query(Criteria.where("name").is(existing.getName())),
-                            new Update()
-                                    .set("imageUrl", url)
-                                    .set("isSystem", true),
-                            Tag.class
-                    );
+                String normalizedImage = normalizeTagImageUrl(existing.getImageUrl(), true);
+                if (normalizedImage == null) {
+                    normalizedImage = url;
                 }
+                mongoTemplate.updateFirst(
+                        new Query(Criteria.where("_id").is(existing.getId())),
+                        new Update()
+                                .set("imageUrl", normalizedImage)
+                                .set("isSystem", true),
+                        Tag.class
+                );
                 continue;
             }
             Tag tag = new Tag(d[0], url, true);
@@ -215,7 +227,7 @@ public class TagService implements CommandLineRunner {
         tagRepository.findAll().forEach(tag -> {
             String current = tag.getImageUrl();
             if (tag.isSystem()) {
-                String fallback = "/static/tags/" + tag.getName().toLowerCase() + ".jpg";
+                String fallback = staticFallbackFor(tag);
                 if (!fallback.equals(current) || isExternal(current)) {
                     mongoTemplate.updateFirst(
                             new Query(Criteria.where("name").is(tag.getName())),
@@ -228,19 +240,88 @@ public class TagService implements CommandLineRunner {
                 return;
             }
 
-            boolean invalidCustomImage =
-                    isExternal(current)
-                            || isStaticTagImage(current)
-                            || isMissingUploadAsset(current);
+            String normalized = normalizeTagImageUrl(current, false);
+            boolean invalidCustomPath =
+                    normalized == null
+                            || (!normalized.startsWith(UPLOADS_PREFIX) && !normalized.startsWith(STATIC_TAGS_PREFIX));
+            boolean missingCustomAsset =
+                    !invalidCustomPath
+                            && ((normalized.startsWith(UPLOADS_PREFIX) && isMissingUploadAsset(normalized))
+                            || (normalized.startsWith(STATIC_TAGS_PREFIX) && isMissingStaticTagAsset(normalized)));
 
-            if (invalidCustomImage && current != null) {
+            if (invalidCustomPath) {
+                if (current == null) return;
                 mongoTemplate.updateFirst(
                         new Query(Criteria.where("name").is(tag.getName())),
                         new Update().unset("imageUrl"),
                         Tag.class
                 );
+                return;
+            }
+
+            // Do not erase stored URL when file is temporarily unavailable (e.g. startup race, volume remount).
+            if (missingCustomAsset) {
+                return;
+            }
+
+            if (!normalized.equals(current)) {
+                mongoTemplate.updateFirst(
+                        new Query(Criteria.where("name").is(tag.getName())),
+                        new Update().set("imageUrl", normalized),
+                        Tag.class
+                );
             }
         });
+    }
+
+    private String staticFallbackFor(Tag tag) {
+        String safeName = tag.getName() == null ? "default" : tag.getName().trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "-");
+        return STATIC_TAGS_PREFIX + safeName + ".jpg";
+    }
+
+    private boolean hasFileExtension(String value) {
+        int lastDot = value.lastIndexOf('.');
+        return lastDot > 0 && lastDot < value.length() - 1;
+    }
+
+    private String normalizeTagImageUrl(String rawUrl, boolean isSystem) {
+        if (rawUrl == null) return null;
+        String value = rawUrl.trim();
+        if (value.isBlank()) return null;
+
+        value = value.replace('\\', '/');
+        if (isExternal(value)) return null;
+
+        if (value.startsWith(STATIC_TAGS_PREFIX)) return value;
+        if (value.startsWith("static/tags/")) return "/" + value;
+        if (value.startsWith(UPLOADS_PREFIX)) return value;
+        if (value.startsWith("uploads/")) return "/" + value;
+        if (value.startsWith("/static/uploads/")) return "/" + value.substring("/static/".length());
+        if (value.startsWith("static/uploads/")) return "/" + value.substring("static/".length());
+        if (value.startsWith("/tags/")) return isSystem ? "/static" + value : UPLOADS_PREFIX + value.substring(1);
+        if (value.startsWith("tags/")) return isSystem ? "/static/" + value : UPLOADS_PREFIX + value;
+        if (!value.contains("/") && hasFileExtension(value)) {
+            return isSystem ? STATIC_TAGS_PREFIX + value : UPLOADS_PREFIX + "tags/" + value;
+        }
+        return value.startsWith("/") ? value : "/" + value;
+    }
+
+    private void sanitizeTagForResponse(Tag tag) {
+        if (tag == null) return;
+        if (tag.isSystem()) {
+            tag.setImageUrl(staticFallbackFor(tag));
+            return;
+        }
+
+        String normalized = normalizeTagImageUrl(tag.getImageUrl(), false);
+        if (normalized == null
+                || (!normalized.startsWith(UPLOADS_PREFIX) && !normalized.startsWith(STATIC_TAGS_PREFIX))
+                || (normalized.startsWith(UPLOADS_PREFIX) && isMissingUploadAsset(normalized))
+                || (normalized.startsWith(STATIC_TAGS_PREFIX) && isMissingStaticTagAsset(normalized))) {
+            tag.setImageUrl(null);
+            return;
+        }
+        tag.setImageUrl(normalized);
     }
 
     private boolean isExternal(String url) {
@@ -251,12 +332,69 @@ public class TagService implements CommandLineRunner {
     }
 
     private boolean isStaticTagImage(String url) {
-        return url != null && url.startsWith("/static/tags/");
+        return url != null && (url.startsWith(STATIC_TAGS_PREFIX) || url.startsWith("static/tags/"));
+    }
+
+    private boolean isMissingStaticTagAsset(String url) {
+        if (url == null) return false;
+        String normalized = url.trim().replace('\\', '/');
+        if (normalized.startsWith("static/tags/")) {
+            normalized = "/" + normalized;
+        }
+        if (!normalized.startsWith(STATIC_TAGS_PREFIX)) return false;
+
+        String relative = normalized.substring(STATIC_TAGS_PREFIX.length());
+        int queryIndex = relative.indexOf('?');
+        if (queryIndex >= 0) {
+            relative = relative.substring(0, queryIndex);
+        }
+        int hashIndex = relative.indexOf('#');
+        if (hashIndex >= 0) {
+            relative = relative.substring(0, hashIndex);
+        }
+
+        try {
+            relative = URLDecoder.decode(relative, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return true;
+        }
+
+        ClassPathResource classpathAsset = new ClassPathResource("static/tags/" + relative);
+        if (classpathAsset.exists()) {
+            return false;
+        }
+
+        Path projectStatic = Path.of(System.getProperty("user.dir"), "src", "main", "resources", "static", "tags", relative)
+                .toAbsolutePath()
+                .normalize();
+        if (Files.exists(projectStatic)) {
+            return false;
+        }
+
+        Path compiledStatic = Path.of(System.getProperty("user.dir"), "target", "classes", "static", "tags", relative)
+                .toAbsolutePath()
+                .normalize();
+        return !Files.exists(compiledStatic);
     }
 
     private boolean isMissingUploadAsset(String url) {
-        if (url == null || !url.startsWith("/uploads/")) return false;
-        String relative = url.substring("/uploads/".length());
+        if (url == null) return false;
+        String normalized = url.trim().replace('\\', '/');
+        if (normalized.startsWith("uploads/")) {
+            normalized = "/" + normalized;
+        }
+        if (!normalized.startsWith(UPLOADS_PREFIX)) return false;
+
+        String relative = normalized.substring(UPLOADS_PREFIX.length());
+        int queryIndex = relative.indexOf('?');
+        if (queryIndex >= 0) {
+            relative = relative.substring(0, queryIndex);
+        }
+        int hashIndex = relative.indexOf('#');
+        if (hashIndex >= 0) {
+            relative = relative.substring(0, hashIndex);
+        }
+
         try {
             relative = URLDecoder.decode(relative, StandardCharsets.UTF_8);
         } catch (IllegalArgumentException ignored) {
@@ -268,9 +406,7 @@ public class TagService implements CommandLineRunner {
         if (absolute.startsWith(uploadsRoot) && Files.exists(absolute)) {
             return false;
         }
-
-        ClassPathResource classpathAsset = new ClassPathResource("static/uploads/" + relative);
-        return !classpathAsset.exists();
+        return true;
     }
 
     private List<Tag> sanitizeAndFilterVisible(List<Tag> tags, String userId) {
@@ -281,12 +417,7 @@ public class TagService implements CommandLineRunner {
             boolean isOwn = hasUser && tag.getCreatedBy() != null && userId.equals(tag.getCreatedBy().toHexString());
             if (!tag.isSystem() && !isOwn) continue;
 
-            if (!tag.isSystem()) {
-                String imageUrl = tag.getImageUrl();
-                if (isStaticTagImage(imageUrl) || isMissingUploadAsset(imageUrl)) {
-                    tag.setImageUrl(null);
-                }
-            }
+            sanitizeTagForResponse(tag);
             visible.add(tag);
         }
         return visible;
@@ -295,19 +426,47 @@ public class TagService implements CommandLineRunner {
     private String colorForName(String name) { return ""; } // unused
     private String svgPlaceholder(String text, String color) { return ""; } // unused
 
+    private void appendMissingDefaultSystemTags(List<Tag> tags) {
+        if (tags == null) return;
+        Set<String> existing = new HashSet<>(tags.stream()
+                .map(Tag::getName)
+                .filter(name -> name != null && !name.isBlank())
+                .map(name -> name.trim().toLowerCase(Locale.ROOT))
+                .toList());
+        for (String[] spec : DEFAULT_TAG_SPECS) {
+            String name = spec[0];
+            String key = name.toLowerCase(Locale.ROOT);
+            if (existing.contains(key)) continue;
+
+            Tag fallback = new Tag();
+            fallback.setId("fallback-" + key);
+            fallback.setName(name);
+            fallback.setSystem(true);
+            fallback.setImageUrl(spec[1]);
+            tags.add(fallback);
+            existing.add(key);
+        }
+    }
+
     public List<Tag> listAll() {
-        return tagRepository.findAll();
+        List<Tag> tags = tagRepository.findAll();
+        tags.forEach(this::sanitizeTagForResponse);
+        return tags;
     }
 
     public List<Tag> listForUser(String userId) {
         if (userId == null || !ObjectId.isValid(userId)) {
             return listSystem();
         }
-        return sanitizeAndFilterVisible(tagRepository.findByIsSystemTrueOrCreatedBy(new ObjectId(userId)), userId);
+        List<Tag> visible = sanitizeAndFilterVisible(tagRepository.findByIsSystemTrueOrCreatedBy(new ObjectId(userId)), userId);
+        appendMissingDefaultSystemTags(visible);
+        return visible;
     }
 
     public List<Tag> listSystem() {
-        return sanitizeAndFilterVisible(tagRepository.findByIsSystemTrue(), null);
+        List<Tag> visible = sanitizeAndFilterVisible(tagRepository.findByIsSystemTrue(), null);
+        appendMissingDefaultSystemTags(visible);
+        return visible;
     }
 
     public List<Tag> search(String query) {
@@ -337,7 +496,7 @@ public class TagService implements CommandLineRunner {
         }
         Tag tag = new Tag();
         tag.setName(name.trim());
-        tag.setImageUrl(imageUrl);
+        tag.setImageUrl(normalizeTagImageUrl(imageUrl, false));
         tag.setSystem(false);
         tag.setCreatedBy(new ObjectId(createdBy));
         return tagRepository.save(tag);

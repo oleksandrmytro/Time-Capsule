@@ -26,21 +26,42 @@ interface UserCardProps {
   size?: "sm" | "md" | "lg"
   layout?: "row" | "column"
   currentUserId?: string
+  appearance?: "default" | "dark"
 }
 
-export function UserCard({ user, showFollowButton = true, showMessageButton = false, onFollow, onUnfollow, size = "md", layout = "row", currentUserId }: UserCardProps) {
+export function UserCard({
+  user,
+  showFollowButton = true,
+  showMessageButton = false,
+  onFollow,
+  onUnfollow,
+  size = "md",
+  layout = "row",
+  currentUserId,
+  appearance = "default",
+}: UserCardProps) {
   const isSelf = currentUserId === user.id
   const [isFollowing, setIsFollowing] = useState(isSelf ? false : user.isFollowing ?? false)
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
+  const isDark = appearance === "dark"
 
   const handleFollowToggle = async () => {
     if (isSelf) return
     setIsLoading(true)
     try {
-      if (isFollowing) { await onUnfollow?.(user.id); setIsFollowing(false) }
-      else { await onFollow?.(user.id); setIsFollowing(true) }
-    } catch { /* ignore */ } finally { setIsLoading(false) }
+      if (isFollowing) {
+        await onUnfollow?.(user.id)
+        setIsFollowing(false)
+      } else {
+        await onFollow?.(user.id)
+        setIsFollowing(true)
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const avatarSizes = { sm: "h-8 w-8", md: "h-10 w-10", lg: "h-12 w-12" }
@@ -48,52 +69,64 @@ export function UserCard({ user, showFollowButton = true, showMessageButton = fa
   const canFollow = showFollowButton && !isSelf
   const canMessage = showMessageButton && !isSelf
 
-  // Column layout for grid view
+  const followButtonClass = isDark
+    ? isFollowing
+      ? "border border-white/16 bg-white/[0.05] text-slate-100 hover:bg-white/[0.12]"
+      : "border border-cyan-300/28 bg-cyan-300/14 text-cyan-100 hover:bg-cyan-300/22"
+    : ""
+  const messageButtonClass = isDark
+    ? "border border-white/16 bg-white/[0.05] text-slate-100 hover:bg-white/[0.12]"
+    : ""
+
   if (layout === "column") {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-4 text-center transition-all duration-300 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/10">
+      <div
+        className={`flex flex-col items-center gap-3 rounded-xl border p-4 text-center transition-all duration-300 ${
+          isDark
+            ? "border-white/14 bg-slate-950/62 hover:border-cyan-300/30 hover:bg-slate-900/70 hover:shadow-lg hover:shadow-cyan-400/10"
+            : "border-border bg-card hover:border-accent/50 hover:shadow-lg hover:shadow-accent/10"
+        }`}
+      >
         <button onClick={() => navigate(`/profile/${user.username}`)} className="relative shrink-0 bg-transparent border-none p-0 cursor-pointer">
-          <Avatar className="h-16 w-16 ring-2 ring-accent/20">
+          <Avatar className={`h-16 w-16 ring-2 ${isDark ? "ring-cyan-300/25" : "ring-accent/20"}`}>
             <AvatarImage src={user.avatar} alt={user.displayName} />
-            <AvatarFallback className="bg-accent/10 text-lg font-bold text-accent">
+            <AvatarFallback className={isDark ? "bg-cyan-300/15 text-lg font-bold text-cyan-100" : "bg-accent/10 text-lg font-bold text-accent"}>
               {user.displayName.slice(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          {user.isOnline && (
-            <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-card bg-success" />
-          )}
         </button>
 
         <div className="min-w-0 w-full">
           <button
             onClick={() => navigate(`/profile/${user.username}`)}
-            className="block w-full font-semibold text-card-foreground hover:text-accent transition-colors bg-transparent border-none p-0 cursor-pointer text-center"
+            className={`block w-full bg-transparent border-none p-0 text-center font-semibold transition-colors cursor-pointer ${
+              isDark ? "text-slate-100 hover:text-cyan-100" : "text-card-foreground hover:text-accent"
+            }`}
           >
             <span className="line-clamp-1 text-sm sm:text-base">{user.displayName}</span>
           </button>
-          <p className="line-clamp-1 text-xs text-muted-foreground">@{user.username}</p>
-          {user.bio && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{user.bio}</p>}
+          <p className={`line-clamp-1 text-xs ${isDark ? "text-slate-300" : "text-muted-foreground"}`}>@{user.username}</p>
+          {user.bio && <p className={`mt-1 line-clamp-2 text-xs ${isDark ? "text-slate-400" : "text-muted-foreground"}`}>{user.bio}</p>}
         </div>
 
-        {/* Статистика: підписники та капсули */}
         {(user.followersCount !== undefined || user.capsulesCount !== undefined) && (
-          <div className="flex w-full justify-center gap-4 border-t border-border pt-2">
+          <div className={`flex w-full justify-center gap-4 border-t pt-2 ${isDark ? "border-white/12" : "border-border"}`}>
             {user.followersCount !== undefined && (
               <div className="flex flex-col items-center gap-0.5">
-                <div className="flex items-center gap-1 text-xs font-semibold text-card-foreground">
-                  <Users className="h-3 w-3 text-accent" />
+                <div className={`flex items-center gap-1 text-xs font-semibold ${isDark ? "text-slate-100" : "text-card-foreground"}`}>
+                  <Users className={`h-3 w-3 ${isDark ? "text-cyan-300" : "text-accent"}`} />
                   {user.followersCount}
                 </div>
-                <span className="text-[10px] text-muted-foreground">followers</span>
+                <span className={`text-[10px] ${isDark ? "text-slate-400" : "text-muted-foreground"}`}>followers</span>
               </div>
             )}
             {user.capsulesCount !== undefined && (
               <div className="flex flex-col items-center gap-0.5">
-                <div className="flex items-center gap-1 text-xs font-semibold text-card-foreground">
-                  <Timer className="h-3 w-3 text-accent" />
+                <div className={`flex items-center gap-1 text-xs font-semibold ${isDark ? "text-slate-100" : "text-card-foreground"}`}>
+                  <Timer className={`h-3 w-3 ${isDark ? "text-cyan-300" : "text-accent"}`} />
                   {user.capsulesCount}
                 </div>
-                <span className="text-[10px] text-muted-foreground">capsules</span>
+                <span className={`text-[10px] ${isDark ? "text-slate-400" : "text-muted-foreground"}`}>capsules</span>
               </div>
             )}
           </div>
@@ -102,11 +135,11 @@ export function UserCard({ user, showFollowButton = true, showMessageButton = fa
         <div className="flex w-full flex-col gap-2">
           {canFollow && (
             <Button
-              variant={isFollowing ? "outline" : "default"}
+              variant={isDark ? "ghost" : (isFollowing ? "outline" : "default")}
               size="sm"
               onClick={handleFollowToggle}
               disabled={isLoading}
-              className="w-full gap-1.5 text-xs sm:text-sm"
+              className={`w-full gap-1.5 text-xs sm:text-sm ${followButtonClass}`}
             >
               {isLoading ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -118,7 +151,12 @@ export function UserCard({ user, showFollowButton = true, showMessageButton = fa
             </Button>
           )}
           {canMessage && (
-            <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs sm:text-sm" onClick={() => navigate(`/chat/${user.id}`)}>
+            <Button
+              variant={isDark ? "ghost" : "outline"}
+              size="sm"
+              className={`w-full gap-1.5 text-xs sm:text-sm ${messageButtonClass}`}
+              onClick={() => navigate(`/chat/${user.id}`)}
+            >
               <MessageCircle className="h-3 w-3" />
               <span>Message</span>
             </Button>
@@ -128,32 +166,42 @@ export function UserCard({ user, showFollowButton = true, showMessageButton = fa
     )
   }
 
-  // Row layout for list view (default)
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 sm:p-4 transition-all duration-300 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/10">
+    <div
+      className={`flex items-center gap-3 rounded-xl border p-3 transition-all duration-300 sm:p-4 ${
+        isDark
+          ? "border-white/14 bg-slate-950/62 hover:border-cyan-300/30 hover:bg-slate-900/70 hover:shadow-lg hover:shadow-cyan-400/10"
+          : "border-border bg-card hover:border-accent/50 hover:shadow-lg hover:shadow-accent/10"
+      }`}
+    >
       <button onClick={() => navigate(`/profile/${user.username}`)} className="relative shrink-0 bg-transparent border-none p-0 cursor-pointer">
         <Avatar className={avatarSizes[size]}>
           <AvatarImage src={user.avatar} alt={user.displayName} />
-          <AvatarFallback className="bg-accent/10 text-accent font-bold">{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+          <AvatarFallback className={isDark ? "bg-cyan-300/15 text-cyan-100 font-bold" : "bg-accent/10 text-accent font-bold"}>
+            {user.displayName.slice(0, 2).toUpperCase()}
+          </AvatarFallback>
         </Avatar>
-        {user.isOnline && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card bg-success" />}
       </button>
       <div className="min-w-0 flex-1">
-        <button onClick={() => navigate(`/profile/${user.username}`)} className="block truncate font-medium text-card-foreground hover:text-accent transition-colors bg-transparent border-none p-0 cursor-pointer text-left">
+        <button
+          onClick={() => navigate(`/profile/${user.username}`)}
+          className={`block truncate border-none bg-transparent p-0 text-left font-medium transition-colors cursor-pointer ${
+            isDark ? "text-slate-100 hover:text-cyan-100" : "text-card-foreground hover:text-accent"
+          }`}
+        >
           <span className={nameSizes[size]}>{user.displayName}</span>
         </button>
-        <p className="truncate text-xs text-muted-foreground">@{user.username}</p>
-        {/* Статистика в рядковому режимі */}
+        <p className={`truncate text-xs ${isDark ? "text-slate-300" : "text-muted-foreground"}`}>@{user.username}</p>
         {(user.followersCount !== undefined || user.capsulesCount !== undefined) && (
           <div className="mt-1 flex items-center gap-3">
             {user.followersCount !== undefined && (
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span className={`flex items-center gap-1 text-[11px] ${isDark ? "text-slate-400" : "text-muted-foreground"}`}>
                 <Users className="h-3 w-3" />
                 {user.followersCount} followers
               </span>
             )}
             {user.capsulesCount !== undefined && (
-              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span className={`flex items-center gap-1 text-[11px] ${isDark ? "text-slate-400" : "text-muted-foreground"}`}>
                 <Timer className="h-3 w-3" />
                 {user.capsulesCount} capsules
               </span>
@@ -163,12 +211,23 @@ export function UserCard({ user, showFollowButton = true, showMessageButton = fa
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {canMessage && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(`/chat/${user.id}`)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-8 w-8 ${isDark ? "text-slate-300 hover:bg-white/[0.1] hover:text-slate-100" : ""}`}
+            onClick={() => navigate(`/chat/${user.id}`)}
+          >
             <MessageCircle className="h-4 w-4" />
           </Button>
         )}
         {canFollow && (
-          <Button variant={isFollowing ? "outline" : "default"} size="sm" onClick={handleFollowToggle} disabled={isLoading} className="h-8 gap-1.5 text-xs">
+          <Button
+            variant={isDark ? "ghost" : (isFollowing ? "outline" : "default")}
+            size="sm"
+            onClick={handleFollowToggle}
+            disabled={isLoading}
+            className={`h-8 gap-1.5 text-xs ${followButtonClass}`}
+          >
             {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : isFollowing ? <><UserMinus className="h-3 w-3" />Unfollow</> : <><UserPlus className="h-3 w-3" />Follow</>}
           </Button>
         )}
@@ -176,4 +235,3 @@ export function UserCard({ user, showFollowButton = true, showMessageButton = fa
     </div>
   )
 }
-

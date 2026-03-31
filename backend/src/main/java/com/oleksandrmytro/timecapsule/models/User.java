@@ -68,6 +68,9 @@ public class User implements UserDetails {
     @Field("avatarUrl")
     private String avatarUrl;
 
+    @Field("mustChangePassword")
+    private boolean mustChangePassword = false;
+
     // Constructors
     public User() {}
 
@@ -412,6 +415,15 @@ public class User implements UserDetails {
 
     public void setAvatarUrl(String avatarUrl) {
         this.avatarUrl = avatarUrl;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
         this.updatedAt = LocalDateTime.now();
     }
 }

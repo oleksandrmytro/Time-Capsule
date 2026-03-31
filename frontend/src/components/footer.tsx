@@ -1,30 +1,65 @@
 import { Timer } from "lucide-react"
 import { useNavigate } from "react-router-dom"
+import { useEffect, useRef } from "react"
 
 interface FooterProps {
   onHome?: () => void
+  isLanding?: boolean
+  onHeightChange?: (height: number) => void
 }
 
-export function Footer({ onHome }: FooterProps) {
+export function Footer({ onHome, isLanding = false, onHeightChange }: FooterProps) {
   const navigate = useNavigate()
+  const footerRef = useRef<HTMLElement | null>(null)
+  const useDarkStyle = isLanding
+  const footerClass = useDarkStyle
+    ? "border-t border-white/10 bg-[#040914]/92 px-4 py-2.5 backdrop-blur-md lg:px-8"
+    : "border-t border-white/10 bg-[#040914]/88 px-4 py-2.5 backdrop-blur-md lg:px-8"
+  const logoIconClass = "flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-[linear-gradient(135deg,rgba(124,92,255,0.5),rgba(94,230,255,0.35))]"
+  const logoTextClass = "font-serif text-lg font-bold text-slate-100"
+  const captionClass = "text-xs text-slate-400 sm:text-sm"
 
   const handleHome = () => {
     if (onHome) onHome()
     navigate('/')
   }
 
+  useEffect(() => {
+    if (!onHeightChange) return
+    const node = footerRef.current
+    if (!node) return
+
+    const notify = () => onHeightChange(Math.ceil(node.getBoundingClientRect().height))
+    notify()
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => notify())
+      observer.observe(node)
+      return () => {
+        observer.disconnect()
+        onHeightChange(0)
+      }
+    }
+
+    const handleResize = () => notify()
+    window.addEventListener("resize", handleResize)
+    return () => {
+      window.removeEventListener("resize", handleResize)
+      onHeightChange(0)
+    }
+  }, [onHeightChange])
+
   return (
-    <footer className="border-t border-border bg-secondary/30 px-4 py-12 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col items-center gap-6 sm:flex-row sm:justify-between">
+    <footer ref={footerRef} className={footerClass}>
+      <div className="mx-auto flex max-w-7xl flex-col items-center gap-2 sm:flex-row sm:justify-between">
         <button onClick={handleHome} className="flex items-center gap-2 bg-transparent border-none p-0 shadow-none hover:opacity-80">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Timer className="h-4 w-4 text-primary-foreground" />
+          <div className={logoIconClass}>
+            <Timer className="h-4 w-4 text-slate-50" />
           </div>
-          <span className="font-serif text-lg font-bold text-foreground">TimeCapsule</span>
+          <span className={logoTextClass}>TimeCapsule</span>
         </button>
-        <p className="text-sm text-muted-foreground">Built with care. Your memories matter.</p>
+        <p className={captionClass}>Built for memories that matter.</p>
       </div>
     </footer>
   )
 }
-

@@ -115,6 +115,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         }
 
         // 3. Берем найденного пользователя или создаем нового
+        boolean isNewUser = existingByOAuth.isEmpty() && existingByEmail.isEmpty();
         User user = existingByOAuth.orElse(existingByEmail.orElseGet(() -> {
             User u = new User(finalName, finalEmail, "");
             u.setEnabled(true);
@@ -141,7 +142,14 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
             user.setAvatarUrl(picture);
         }
 
-        user.setEnabled(true); // social login users are trusted as verified
+        String redirectUri = resolveRedirectUri(request);
+        if (!isNewUser) {
+            String rejectionReason = resolveAccountRestriction(user);
+            if (rejectionReason != null) {
+                sendRejectedResponse(request, response, redirectUri, rejectionReason);
+                return;
+            }
+        }
 
         try {
             saveUserRespectingShardKey(user);
@@ -151,11 +159,6 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         }
 
         LoginResponse tokens = buildTokens(user);
-
-        String redirectUri = request.getParameter("redirect_uri");
-        if (redirectUri == null || redirectUri.isBlank()) {
-            redirectUri = defaultFrontendUrl + OAUTH_REDIRECT_PATH;
-        }
 
         if (shouldRedirect(request)) {
             sendRedirectWithCookies(request, response, redirectUri, tokens);
@@ -167,6 +170,40 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
     private boolean shouldRedirect(HttpServletRequest request) {
         String redirectFlag = request.getParameter("redirect");
         return redirectFlag == null || Boolean.parseBoolean(redirectFlag);
+    }
+
+    private String resolveRedirectUri(HttpServletRequest request) {
+        String redirectUri = request.getParameter("redirect_uri");
+        if (redirectUri == null || redirectUri.isBlank()) {
+            return defaultFrontendUrl + OAUTH_REDIRECT_PATH;
+        }
+        return redirectUri;
+    }
+
+    private String resolveAccountRestriction(User user) {
+        if (user.getDeletedAt() != null) {
+            return "account_deleted";
+        }
+        if (user.getBlockedUntil() != null && user.getBlockedUntil().isAfter(java.time.LocalDateTime.now())) {
+            return "account_banned";
+        }
+        if (!user.isEnabled()) {
+            return "account_disabled";
+        }
+        return null;
+    }
+
+    private void sendRejectedResponse(HttpServletRequest request, HttpServletResponse response, String redirectUri, String reason) throws IOException {
+        if (shouldRedirect(request)) {
+            String target = UriComponentsBuilder.fromUriString(redirectUri)
+                    .queryParam("success", "false")
+                    .queryParam("error", reason)
+                    .build()
+                    .toUriString();
+            response.sendRedirect(target);
+            return;
+        }
+        writeJsonErrorResponse(response, reason);
     }
 
     private void sendRedirectWithCookies(HttpServletRequest request, HttpServletResponse response, String redirectUri, LoginResponse tokens) throws IOException {
@@ -229,6 +266,23 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         payload.put("expiresIn", tokens.getExpiresIn());
         payload.put("refreshExpiresIn", tokens.getRefreshExpiresIn());
         payload.put("tokenType", "Bearer");
+        payload.put("mustChangePassword", tokens.isMustChangePassword());
+        payload.put("impersonating", tokens.isImpersonating());
+        payload.put("actingAdminId", tokens.getActingAdminId());
+        payload.put("actingAdminEmail", tokens.getActingAdminEmail());
+
+        response.getWriter().write(objectMapper.writeValueAsString(payload));
+        response.getWriter().flush();
+    }
+
+    private void writeJsonErrorResponse(HttpServletResponse response, String reason) throws IOException {
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setContentType("application/json;charset=UTF-8");
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("success", false);
+        payload.put("error", reason);
 
         response.getWriter().write(objectMapper.writeValueAsString(payload));
         response.getWriter().flush();

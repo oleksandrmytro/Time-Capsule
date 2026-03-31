@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
-import { Timer, Lock, Eye, Users, Grid3X3, List } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
+import { Timer, Lock, Eye, Users, Grid3X3, List, Map } from "lucide-react"
 import { StatusBadge } from "@/components/status-badge"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
-import type { Capsule } from "@/services/api"
+import { CapsulesMapView } from "@/components/capsules/capsules-map-view"
+import type { Capsule, CapsuleMapMarker } from "@/services/api"
 
 interface ProfileCapsulesGridProps {
   capsules: Capsule[]
@@ -12,19 +13,69 @@ interface ProfileCapsulesGridProps {
   username: string
 }
 
+type CapsuleViewMode = "grid" | "list" | "map"
+type ProfileMapFocusState = {
+  profileMapIntent?: {
+    viewMode?: CapsuleViewMode
+    searchQuery?: string
+  }
+  focusCapsuleId?: string
+  focusCoordinates?: [number, number]
+}
+
+function resolveVisibleCapsules(capsules: Capsule[], isOwnProfile: boolean) {
+  if (isOwnProfile) return capsules
+  return capsules.filter((capsule) => capsule.visibility !== "private")
+}
+
 export function ProfileCapsulesGrid({
   capsules,
   isOwnProfile,
   username,
 }: ProfileCapsulesGridProps) {
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [viewMode, setViewMode] = useState<CapsuleViewMode>("grid")
   const navigate = useNavigate()
   const location = useLocation()
+  const focusState = (location.state as ProfileMapFocusState | null) || null
+  const requestedViewMode = focusState?.profileMapIntent?.viewMode || null
+  const mapSearchSeed = focusState?.profileMapIntent?.searchQuery || ""
+  const focusedCapsuleId = focusState?.focusCapsuleId || null
 
-  // Filter capsules: own profile shows all, other profiles show only public
-  const visibleCapsules = isOwnProfile
-    ? capsules
-    : capsules.filter((c) => c.visibility === "public")
+  const visibleCapsules = resolveVisibleCapsules(capsules, isOwnProfile)
+  const mapMarkers = useMemo<CapsuleMapMarker[]>(() => {
+    return visibleCapsules
+      .filter((capsule) => {
+        const lon = capsule.location?.coordinates?.[0]
+        const lat = capsule.location?.coordinates?.[1]
+        return Number.isFinite(lon) && Number.isFinite(lat)
+      })
+      .map((capsule) => ({
+        id: capsule.id,
+        title: capsule.title,
+        ownerId: isOwnProfile ? "me" : `user-${username}`,
+        ownerName: isOwnProfile ? "You" : `@${username}`,
+        visibility: capsule.visibility,
+        status: capsule.status,
+        isLocked: capsule.isLocked,
+        isOwn: isOwnProfile,
+        coverImageUrl: capsule.coverImageUrl ?? null,
+        unlockAt: capsule.unlockAt ?? null,
+        openedAt: capsule.openedAt ?? null,
+        tags: capsule.tags ?? null,
+        coordinates: [capsule.location!.coordinates[0], capsule.location!.coordinates[1]],
+      }))
+  }, [visibleCapsules, isOwnProfile, username])
+
+  useEffect(() => {
+    if (viewMode !== "map") return
+    if (mapMarkers.length > 0) return
+    setViewMode("grid")
+  }, [viewMode, mapMarkers.length])
+
+  useEffect(() => {
+    if (!requestedViewMode) return
+    setViewMode(requestedViewMode)
+  }, [requestedViewMode])
 
   if (visibleCapsules.length === 0) {
     return (
@@ -33,12 +84,12 @@ export function ProfileCapsulesGrid({
         title={
           isOwnProfile
             ? "No capsules yet"
-            : "No public capsules"
+            : "No visible capsules"
         }
         description={
           isOwnProfile
-            ? "Start creating time capsules to preserve your memories for the future."
-            : `Sorry, @${username} hasn't created any public capsules yet.`
+            ? "Create your first capsule to preserve your story."
+            : `@${username} has no capsules available for viewing.`
         }
         actionLabel={isOwnProfile ? "Create Capsule" : undefined}
         onAction={isOwnProfile ? () => navigate("/create") : undefined}
@@ -47,60 +98,105 @@ export function ProfileCapsulesGrid({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* View mode toggle and count */}
-      <div className="flex items-center justify-between px-1">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 px-1">
         <div className="flex flex-col gap-0.5">
-          <p className="text-base font-semibold text-card-foreground">
+          <p className="text-base font-semibold text-slate-100">
             {visibleCapsules.length} capsule{visibleCapsules.length !== 1 && "s"}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {isOwnProfile ? "Your time capsules" : "Public capsules"}
+          <p className="text-xs text-slate-400">
+            {focusedCapsuleId
+              ? "Selected capsule"
+              : isOwnProfile
+              ? "Your capsules archive"
+              : "Capsules visible to you"}
           </p>
         </div>
-        <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
+
+        <div className="flex gap-1 rounded-xl border border-white/12 bg-white/[0.04] p-1">
           <Button
-            variant={viewMode === "grid" ? "secondary" : "ghost"}
+            variant="ghost"
             size="sm"
             onClick={() => setViewMode("grid")}
-            className="h-9 w-9 p-0 transition-all"
+            className={`h-9 w-9 p-0 ${viewMode === "grid" ? "border border-cyan-300/35 bg-cyan-300/16 text-cyan-100" : "text-slate-300 hover:bg-white/[0.1] hover:text-slate-100"}`}
             title="Grid view"
           >
             <Grid3X3 className="h-4 w-4" />
             <span className="sr-only">Grid view</span>
           </Button>
           <Button
-            variant={viewMode === "list" ? "secondary" : "ghost"}
+            variant="ghost"
             size="sm"
             onClick={() => setViewMode("list")}
-            className="h-9 w-9 p-0 transition-all"
+            className={`h-9 w-9 p-0 ${viewMode === "list" ? "border border-cyan-300/35 bg-cyan-300/16 text-cyan-100" : "text-slate-300 hover:bg-white/[0.1] hover:text-slate-100"}`}
             title="List view"
           >
             <List className="h-4 w-4" />
             <span className="sr-only">List view</span>
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setViewMode("map")}
+            className={`h-9 w-9 p-0 ${viewMode === "map" ? "border border-cyan-300/35 bg-cyan-300/16 text-cyan-100" : "text-slate-300 hover:bg-white/[0.1] hover:text-slate-100"}`}
+            title="Map view"
+            disabled={mapMarkers.length === 0}
+          >
+            <Map className="h-4 w-4" />
+            <span className="sr-only">Map view</span>
+          </Button>
         </div>
       </div>
 
-      {/* Grid view */}
-      {viewMode === "grid" ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+      {viewMode === "grid" && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {visibleCapsules.map((capsule) => (
-            <CapsuleGridItem key={capsule.id} capsule={capsule} onClick={() => navigate(`/capsules/${capsule.id}`, { state: { from: location.pathname } })} />
+            <CapsuleGridItem
+              key={capsule.id}
+              capsule={capsule}
+              isFocused={focusedCapsuleId === capsule.id}
+              onClick={() => navigate(`/capsules/${capsule.id}`, { state: { from: location.pathname } })}
+            />
           ))}
         </div>
-      ) : (
+      )}
+
+      {viewMode === "list" && (
         <div className="flex flex-col gap-3">
           {visibleCapsules.map((capsule) => (
-            <CapsuleListItem key={capsule.id} capsule={capsule} onClick={() => navigate(`/capsules/${capsule.id}`, { state: { from: location.pathname } })} />
+            <CapsuleListItem
+              key={capsule.id}
+              capsule={capsule}
+              isFocused={focusedCapsuleId === capsule.id}
+              onClick={() => navigate(`/capsules/${capsule.id}`, { state: { from: location.pathname } })}
+            />
           ))}
         </div>
+      )}
+
+      {viewMode === "map" && mapMarkers.length > 0 && (
+        <CapsulesMapView
+          embedded
+          hideHeader
+          markersOverride={mapMarkers}
+          fromPath={location.pathname}
+          initialSearch={mapSearchSeed}
+          onOpenCapsule={(marker) => navigate(`/capsules/${marker.id}`, { state: { from: location.pathname } })}
+        />
+      )}
+
+      {viewMode === "map" && mapMarkers.length === 0 && (
+        <EmptyState
+          icon={Map}
+          title="No mapped capsules"
+          description={isOwnProfile ? "Add locations to your capsules to display them on the map." : "This profile has no capsules with locations."}
+        />
       )}
     </div>
   )
 }
 
-function CapsuleGridItem({ capsule, onClick }: { capsule: Capsule; onClick: () => void }) {
+function CapsuleGridItem({ capsule, onClick, isFocused = false }: { capsule: Capsule; onClick: () => void; isFocused?: boolean }) {
   const [coverSrc, setCoverSrc] = useState(capsule.coverImageUrl ?? "")
 
   useEffect(() => {
@@ -111,68 +207,84 @@ function CapsuleGridItem({ capsule, onClick }: { capsule: Capsule; onClick: () =
     capsule.visibility === "private"
       ? Lock
       : capsule.visibility === "shared"
-        ? Users
-        : Eye
+      ? Users
+      : Eye
 
   return (
     <button
       onClick={onClick}
-      className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-gradient-to-br from-primary/8 via-card to-accent/5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-accent/15 hover:border-accent/50 cursor-pointer w-full text-left"
+      className={`group relative w-full overflow-hidden rounded-2xl border p-4 text-left shadow-[0_22px_50px_rgba(2,6,23,0.45)] transition-all duration-300 hover:-translate-y-1 hover:bg-slate-900/70 ${
+        isFocused
+          ? "border-cyan-200/55 bg-slate-900/72 shadow-[0_0_0_1px_rgba(94,230,255,0.45),0_22px_50px_rgba(2,6,23,0.45)]"
+          : "border-white/14 bg-slate-950/65 hover:border-cyan-200/35"
+      }`}
     >
-      {/* Cover image OR background pattern */}
-      {coverSrc ? (
-        <img
-          src={coverSrc}
-          alt={capsule.title}
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          loading="lazy"
-          onError={() => setCoverSrc("/static/tags/default.jpg")}
-        />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center opacity-10 transition-opacity duration-300 group-hover:opacity-20">
-          <Timer className="h-20 w-20 text-primary" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_18%,rgba(94,230,255,0.08)_0%,rgba(94,230,255,0)_42%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_25%,rgba(124,92,255,0.1)_0%,rgba(124,92,255,0)_44%)]" />
+
+      <div className="relative flex items-start justify-between gap-2">
+        <StatusBadge status={capsule.status} size="sm" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-slate-900/60 text-slate-200">
+          <VisibilityIcon className="h-4 w-4" />
         </div>
-      )}
+      </div>
 
-      {/* Gradient overlay — stronger when cover exists */}
-      <div className={`absolute inset-0 bg-gradient-to-t ${coverSrc ? "from-black/60 via-black/10 to-transparent" : "from-black/30 via-transparent to-transparent opacity-0 group-hover:opacity-100"} transition-opacity duration-300`} />
-
-      {/* Content overlay */}
-      <div className="absolute inset-0 flex flex-col justify-between p-4 sm:p-5">
-        {/* Top: badges */}
-        <div className="flex items-start justify-between">
-          <StatusBadge status={capsule.status} size="sm" />
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-background/70 backdrop-blur-md transition-all group-hover:bg-background/90">
-            <VisibilityIcon className="h-4 w-4 text-muted-foreground" />
+      <div className="relative mt-3 overflow-hidden rounded-xl border border-white/12 bg-slate-900/55">
+        {coverSrc ? (
+          <img
+            src={coverSrc}
+            alt={capsule.title}
+            className="h-36 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            loading="lazy"
+            onError={() => setCoverSrc("/static/tags/default.jpg")}
+          />
+        ) : (
+          <div className="flex h-36 items-center justify-center">
+            <Timer className="h-9 w-9 text-slate-500" />
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Bottom: title */}
-        <div className="rounded-lg bg-background/60 p-3 backdrop-blur-md transition-all duration-300 group-hover:bg-background/90">
-          <h3 className="line-clamp-2 text-xs font-semibold leading-tight text-card-foreground sm:text-sm sm:leading-snug">
-            {capsule.title}
-          </h3>
-          {capsule.tags && capsule.tags.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {capsule.tags.slice(0, 2).map((tag) => (
-                <span key={tag} className="rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground backdrop-blur-sm">
-                  {tag}
-                </span>
-              ))}
-              {capsule.tags.length > 2 && (
-                <span className="rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground backdrop-blur-sm">
-                  +{capsule.tags.length - 2}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+      <div className="relative mt-3 space-y-2">
+        {isFocused && (
+          <span className="inline-flex rounded-full border border-cyan-300/35 bg-cyan-300/14 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
+            Selected
+          </span>
+        )}
+        <h3 className="line-clamp-2 text-sm font-semibold leading-6 text-slate-100">{capsule.title}</h3>
+        {capsule.body && !capsule.isLocked && (
+          <p className="line-clamp-2 text-xs leading-5 text-slate-300">{capsule.body}</p>
+        )}
+
+        {capsule.tags && capsule.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {capsule.tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="rounded-full border border-cyan-300/25 bg-cyan-400/12 px-2 py-0.5 text-[10px] font-medium text-cyan-100">
+                {tag}
+              </span>
+            ))}
+            {capsule.tags.length > 3 && (
+              <span className="rounded-full border border-white/15 bg-white/8 px-2 py-0.5 text-[10px] font-medium text-slate-300">
+                +{capsule.tags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
+
+        <p className="text-[11px] text-slate-400">
+          Unlocks{" "}
+          {new Date(capsule.unlockAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </p>
       </div>
     </button>
   )
 }
 
-function CapsuleListItem({ capsule, onClick }: { capsule: Capsule; onClick: () => void }) {
+function CapsuleListItem({ capsule, onClick, isFocused = false }: { capsule: Capsule; onClick: () => void; isFocused?: boolean }) {
   const [coverSrc, setCoverSrc] = useState(capsule.coverImageUrl ?? "")
 
   useEffect(() => {
@@ -182,10 +294,13 @@ function CapsuleListItem({ capsule, onClick }: { capsule: Capsule; onClick: () =
   return (
     <button
       onClick={onClick}
-      className="group flex items-start gap-4 rounded-xl border border-border bg-card p-4 sm:p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/10 cursor-pointer w-full text-left"
+      className={`group flex items-start gap-4 rounded-xl border p-4 transition-all duration-300 hover:-translate-y-0.5 hover:bg-slate-900/65 ${
+        isFocused
+          ? "border-cyan-200/55 bg-slate-900/72 shadow-[0_0_0_1px_rgba(94,230,255,0.42)]"
+          : "border-white/14 bg-slate-950/60 hover:border-cyan-300/35"
+      }`}
     >
-      {/* Thumbnail: cover image OR icon */}
-      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary/15 to-accent/20 transition-all duration-300 group-hover:from-primary/25 group-hover:to-accent/30">
+      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/12 bg-slate-900/55">
         {coverSrc ? (
           <img
             src={coverSrc}
@@ -195,48 +310,42 @@ function CapsuleListItem({ capsule, onClick }: { capsule: Capsule; onClick: () =
             onError={() => setCoverSrc("/static/tags/default.jpg")}
           />
         ) : (
-          <Timer className="h-7 w-7 text-primary transition-transform duration-300 group-hover:scale-110" />
+          <Timer className="h-7 w-7 text-slate-500 transition-transform duration-300 group-hover:scale-110" />
         )}
       </div>
 
-      {/* Content */}
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {/* Status and title row */}
+      <div className="min-w-0 flex-1 space-y-2 text-left">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="truncate font-semibold text-card-foreground transition-colors duration-300 group-hover:text-accent">
-              {capsule.title}
-            </h3>
-          </div>
+          <h3 className="truncate text-sm font-semibold text-slate-100 group-hover:text-cyan-100">{capsule.title}</h3>
           <StatusBadge status={capsule.status} size="sm" />
         </div>
-
-        {/* Message preview */}
-        {capsule.body && !capsule.isLocked && (
-          <p className="line-clamp-1 text-sm text-muted-foreground">
-            {capsule.body}
-          </p>
+        {isFocused && (
+          <span className="inline-flex rounded-full border border-cyan-300/35 bg-cyan-300/14 px-2 py-0.5 text-[10px] font-semibold text-cyan-100">
+            Selected
+          </span>
         )}
 
-        {/* Tags */}
+        {capsule.body && !capsule.isLocked && (
+          <p className="line-clamp-1 text-xs text-slate-300">{capsule.body}</p>
+        )}
+
         {capsule.tags && capsule.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {capsule.tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
+              <span key={tag} className="rounded-full border border-cyan-300/25 bg-cyan-400/12 px-2 py-0.5 text-[10px] font-medium text-cyan-100">
                 {tag}
               </span>
             ))}
             {capsule.tags.length > 3 && (
-              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
+              <span className="rounded-full border border-white/15 bg-white/8 px-2 py-0.5 text-[10px] font-medium text-slate-300">
                 +{capsule.tags.length - 3}
               </span>
             )}
           </div>
         )}
 
-        {/* Unlock date */}
-        <p className="text-xs text-muted-foreground font-medium">
-          {capsule.isLocked ? "🔒 " : ""}Unlocks{" "}
+        <p className="text-[11px] text-slate-400">
+          Unlocks{" "}
           {new Date(capsule.unlockAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",

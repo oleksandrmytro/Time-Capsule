@@ -10,6 +10,7 @@ import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -84,6 +85,79 @@ public class EmailService {
         sendHtmlEmail(to, subject, text);
     }
 
+    public void sendPasswordChangeCode(User user, String plainCode) {
+        if (user == null || !StringUtils.hasText(user.getEmail())) {
+            throw new RuntimeException("User email is required");
+        }
+        if (!StringUtils.hasText(plainCode)) {
+            throw new RuntimeException("Verification code is required");
+        }
+
+        String safeName = HtmlUtils.htmlEscape(resolveDisplayName(user));
+        String safeCode = HtmlUtils.htmlEscape(plainCode);
+        String subject = "Password change verification code";
+        String bodyContent = "<p style=\"margin:0 0 14px 0;font-size:15px;line-height:1.65;color:#dbe7ff;\">Hi <strong style=\"color:#ffffff;\">"
+                + safeName + "</strong>, use this code to confirm password change:</p>"
+                + "<div style=\"margin:16px 0;border-radius:14px;border:1px solid rgba(94,230,255,.35);background:rgba(17,32,64,.55);padding:16px 18px;\">"
+                + "<p style=\"margin:0;font-size:28px;line-height:1.1;letter-spacing:4px;font-weight:700;color:#5EE6FF;text-align:center;\">"
+                + safeCode + "</p>"
+                + "</div>"
+                + "<p style=\"margin:0 0 8px 0;font-size:13px;line-height:1.55;color:#9fb0cf;\">This code expires in 15 minutes.</p>"
+                + "<p style=\"margin:0;font-size:13px;line-height:1.55;color:#9fb0cf;\">If you did not request this, you can safely ignore this email.</p>";
+        String body = renderEmailLayout(
+                "Password change verification code",
+                "Password Change Request",
+                "Secure update for your TimeCapsule account",
+                bodyContent,
+                "Open Account Settings",
+                frontendUrl + "/account",
+                "For security, never share your code with anyone."
+        );
+
+        try {
+            sendHtmlEmail(user.getEmail(), subject, body);
+        } catch (MessagingException ex) {
+            throw new RuntimeException("Failed to send password change code", ex);
+        }
+    }
+
+    public void sendTemporaryPassword(User user, String temporaryPassword) {
+        if (user == null || !StringUtils.hasText(user.getEmail())) {
+            throw new RuntimeException("User email is required");
+        }
+        if (!StringUtils.hasText(temporaryPassword)) {
+            throw new RuntimeException("Temporary password is required");
+        }
+
+        String safeName = HtmlUtils.htmlEscape(resolveDisplayName(user));
+        String safePassword = HtmlUtils.htmlEscape(temporaryPassword);
+        String subject = "Temporary password for your TimeCapsule account";
+        String bodyContent = "<p style=\"margin:0 0 14px 0;font-size:15px;line-height:1.65;color:#dbe7ff;\">Hi <strong style=\"color:#ffffff;\">"
+                + safeName + "</strong>, an administrator generated a temporary password for your account.</p>"
+                + "<div style=\"margin:16px 0;border-radius:14px;border:1px solid rgba(124,92,255,.36);background:rgba(17,32,64,.55);padding:16px 18px;\">"
+                + "<p style=\"margin:0 0 6px 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#95a6c9;\">Temporary Password</p>"
+                + "<p style=\"margin:0;font-size:22px;line-height:1.2;letter-spacing:1px;font-weight:700;color:#ffffff;text-align:center;\">"
+                + safePassword + "</p>"
+                + "</div>"
+                + "<p style=\"margin:0 0 8px 0;font-size:13px;line-height:1.55;color:#9fb0cf;\">Sign in with this password and immediately set your own new password in account settings.</p>"
+                + "<p style=\"margin:0;font-size:13px;line-height:1.55;color:#9fb0cf;\">If this action was unexpected, contact support right away.</p>";
+        String body = renderEmailLayout(
+                "Temporary password issued",
+                "Temporary Password",
+                "Sign in and change it immediately",
+                bodyContent,
+                null,
+                null,
+                "For security, this password should be used only once."
+        );
+
+        try {
+            sendHtmlEmail(user.getEmail(), subject, body);
+        } catch (MessagingException ex) {
+            throw new RuntimeException("Failed to send temporary password email", ex);
+        }
+    }
+
     public void sendCapsuleOpened(String ownerId, Capsule capsule) {
         if (!StringUtils.hasText(ownerId) || capsule == null) {
             return;
@@ -146,23 +220,32 @@ public class EmailService {
         String stateId = digestStateId(recipientUserId, type);
         Query query = new Query(Criteria.where("_id").is(stateId));
         Update update = new Update()
-                .setOnInsert("_id", stateId)
-                .setOnInsert("userId", userId)
-                .setOnInsert("type", type)
-                .setOnInsert("createdAt", now)
                 .inc("pendingCount", 1)
                 .set("sampleActor", trimForStorage(actorName, 120))
                 .set("sampleText", trimForStorage(sampleText, 240))
                 .set("lastPendingAt", now)
                 .set("updatedAt", now);
 
-        Document state = mongoTemplate.findAndModify(
-                query,
-                update,
-                FindAndModifyOptions.options().upsert(true).returnNew(true),
-                Document.class,
-                DIGEST_COLLECTION
-        );
+        var updateResult = mongoTemplate.updateFirst(query, update, DIGEST_COLLECTION);
+        if (updateResult.getMatchedCount() == 0) {
+            Document seed = new Document();
+            seed.put("_id", stateId);
+            seed.put("userId", userId);
+            seed.put("type", type);
+            seed.put("createdAt", now);
+            seed.put("pendingCount", 1);
+            seed.put("sampleActor", trimForStorage(actorName, 120));
+            seed.put("sampleText", trimForStorage(sampleText, 240));
+            seed.put("lastPendingAt", now);
+            seed.put("updatedAt", now);
+            try {
+                mongoTemplate.insert(seed, DIGEST_COLLECTION);
+            } catch (DuplicateKeyException ignored) {
+                mongoTemplate.updateFirst(query, update, DIGEST_COLLECTION);
+            }
+        }
+
+        Document state = mongoTemplate.findOne(query, Document.class, DIGEST_COLLECTION);
         if (state != null) {
             trySendIfEligible(state, now, false);
         }
@@ -306,35 +389,24 @@ public class EmailService {
         String safeTitle = HtmlUtils.htmlEscape(StringUtils.hasText(capsule.getTitle()) ? capsule.getTitle() : "Untitled capsule");
         String capsuleLink = frontendUrl + "/capsules/" + capsule.getId();
         String safeLink = HtmlUtils.htmlEscape(capsuleLink);
-
-        return "<!doctype html>"
-                + "<html lang=\"en\">"
-                + "<head>"
-                + "<meta charset=\"UTF-8\">"
-                + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
-                + "<title>Capsule Opened</title>"
-                + "</head>"
-                + "<body style=\"margin:0;padding:0;background:#f3f6fb;font-family:'Segoe UI',Arial,sans-serif;color:#1f2937;\">"
-                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#f3f6fb;padding:24px 12px;\">"
-                + "<tr><td align=\"center\">"
-                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:620px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;\">"
-                + "<tr><td style=\"background:linear-gradient(135deg,#0f766e,#2563eb);padding:28px 32px;\">"
-                + "<div style=\"font-size:12px;letter-spacing:.08em;color:#dbeafe;text-transform:uppercase;\">TimeCapsule</div>"
-                + "<h1 style=\"margin:8px 0 0 0;font-size:28px;line-height:1.2;color:#ffffff;\">Your capsule is open</h1>"
-                + "</td></tr>"
-                + "<tr><td style=\"padding:30px 32px 20px 32px;\">"
-                + "<p style=\"margin:0 0 14px 0;font-size:16px;line-height:1.6;\">Hi, <strong>" + safeName + "</strong>.</p>"
-                + "<p style=\"margin:0 0 14px 0;font-size:16px;line-height:1.6;\">Your capsule <strong>\"" + safeTitle + "\"</strong> has just been opened and is ready to view.</p>"
-                + "<p style=\"margin:0 0 26px 0;font-size:15px;line-height:1.6;color:#4b5563;\">Use the button below to open it.</p>"
-                + "<a href=\"" + safeLink + "\" style=\"display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:10px;\">Open capsule</a>"
-                + "<p style=\"margin:24px 0 0 0;font-size:12px;line-height:1.5;color:#6b7280;word-break:break-all;\">If the button does not work, copy this link:<br>" + safeLink + "</p>"
-                + "</td></tr>"
-                + "</table>"
-                + "<p style=\"max-width:620px;margin:14px auto 0 auto;font-size:12px;color:#94a3b8;line-height:1.5;\">This is an automated TimeCapsule message.</p>"
-                + "</td></tr>"
-                + "</table>"
-                + "</body>"
-                + "</html>";
+        String bodyContent = "<p style=\"margin:0 0 14px 0;font-size:15px;line-height:1.65;color:#dbe7ff;\">Hi <strong style=\"color:#ffffff;\">"
+                + safeName + "</strong>, your capsule is now available.</p>"
+                + "<div style=\"margin:16px 0;border-radius:14px;border:1px solid rgba(124,92,255,.36);background:rgba(17,32,64,.55);padding:14px 16px;\">"
+                + "<p style=\"margin:0 0 6px 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#95a6c9;\">Opened Capsule</p>"
+                + "<p style=\"margin:0;font-size:18px;line-height:1.35;font-weight:600;color:#ffffff;\">"
+                + safeTitle + "</p>"
+                + "</div>"
+                + "<p style=\"margin:0;font-size:13px;line-height:1.55;color:#9fb0cf;word-break:break-all;\">Direct link: "
+                + safeLink + "</p>";
+        return renderEmailLayout(
+                "Your capsule is now open",
+                "Capsule Opened",
+                "A memory from your timeline has just unlocked",
+                bodyContent,
+                "Open Capsule",
+                capsuleLink,
+                "You are receiving this because this capsule belongs to your account."
+        );
     }
 
     private String buildDigestSubject(String type, int count) {
@@ -353,14 +425,74 @@ public class EmailService {
         String safeActor = HtmlUtils.htmlEscape(StringUtils.hasText(getString(state, "sampleActor")) ? getString(state, "sampleActor") : "Someone");
         String safeText = HtmlUtils.htmlEscape(StringUtils.hasText(getString(state, "sampleText")) ? getString(state, "sampleText") : "sent an update");
         boolean commentsDigest = DIGEST_TYPE_COMMENT.equalsIgnoreCase(type);
-        String section = commentsDigest ? "capsules" : "chat";
+        String section = commentsDigest ? "capsule" : "chat";
         String actionUrl = commentsDigest ? frontendUrl + "/capsules" : frontendUrl + "/chat";
+        String updatesLabel = pendingCount == 1 ? section + " update" : section + " updates";
+        String bodyContent = "<p style=\"margin:0 0 14px 0;font-size:15px;line-height:1.65;color:#dbe7ff;\">Hi <strong style=\"color:#ffffff;\">"
+                + safeName + "</strong>, you have <strong style=\"color:#ffffff;\">" + pendingCount + "</strong> new "
+                + updatesLabel + ".</p>"
+                + "<div style=\"margin:16px 0;border-radius:14px;border:1px solid rgba(94,230,255,.3);background:rgba(17,32,64,.55);padding:14px 16px;\">"
+                + "<p style=\"margin:0 0 6px 0;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#95a6c9;\">Latest Activity</p>"
+                + "<p style=\"margin:0;font-size:15px;line-height:1.55;color:#eef4ff;\"><strong style=\"color:#5EE6FF;\">"
+                + safeActor + "</strong> - " + safeText + "</p>"
+                + "</div>"
+                + "<p style=\"margin:0;font-size:12px;line-height:1.5;color:#9fb0cf;\">Digest generated at " + now + " UTC.</p>";
+        String subtitle = commentsDigest ? "New activity on your capsules" : "New activity in your chats";
+        return renderEmailLayout(
+                "TimeCapsule digest",
+                "Activity Digest",
+                subtitle,
+                bodyContent,
+                "Open TimeCapsule",
+                actionUrl,
+                "You can manage notification preferences inside your account settings."
+        );
+    }
 
-        return "<p>Hi " + safeName + ",</p>"
-                + "<p>You have <strong>" + pendingCount + "</strong> new " + section + " updates.</p>"
-                + "<p>Latest: <strong>" + safeActor + "</strong> - " + safeText + "</p>"
-                + "<p><a href=\"" + actionUrl + "\">Open TimeCapsule</a></p>"
-                + "<p style=\"color:#666;font-size:12px;\">Digest generated at " + now + " UTC.</p>";
+    private String renderEmailLayout(String preheader,
+                                     String title,
+                                     String subtitle,
+                                     String bodyContentHtml,
+                                     String actionLabel,
+                                     String actionUrl,
+                                     String footerNote) {
+        String safePreheader = HtmlUtils.htmlEscape(preheader == null ? "" : preheader);
+        String safeTitle = HtmlUtils.htmlEscape(title == null ? "TimeCapsule" : title);
+        String safeSubtitle = HtmlUtils.htmlEscape(subtitle == null ? "" : subtitle);
+        String safeActionLabel = HtmlUtils.htmlEscape(actionLabel == null ? "" : actionLabel);
+        String safeActionUrl = HtmlUtils.htmlEscape(actionUrl == null ? "" : actionUrl);
+        String safeFooterNote = HtmlUtils.htmlEscape(footerNote == null ? "" : footerNote);
+        String actionBlock = "";
+        if (StringUtils.hasText(actionLabel) && StringUtils.hasText(actionUrl)) {
+            actionBlock = "<tr><td style=\"padding:0 28px 24px 28px;\">"
+                    + "<a href=\"" + safeActionUrl + "\" style=\"display:inline-block;border-radius:12px;background:linear-gradient(135deg,#7C5CFF,#5EE6FF);color:#061023;text-decoration:none;font-weight:700;font-size:14px;padding:12px 18px;\">"
+                    + safeActionLabel
+                    + "</a></td></tr>";
+        }
+
+        return "<!doctype html>"
+                + "<html lang=\"en\">"
+                + "<head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\"><title>"
+                + safeTitle
+                + "</title></head>"
+                + "<body style=\"margin:0;padding:0;background:#050816;font-family:Segoe UI,Arial,sans-serif;color:#dbe7ff;\">"
+                + "<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;visibility:hidden;\">" + safePreheader + "</div>"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"background:#050816;padding:22px 10px;\">"
+                + "<tr><td align=\"center\">"
+                + "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"max-width:640px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.1);background:#0B1220;\">"
+                + "<tr><td style=\"padding:24px 28px;background:linear-gradient(135deg,rgba(124,92,255,.3),rgba(94,230,255,.22));\">"
+                + "<p style=\"margin:0 0 8px 0;font-size:11px;line-height:1.4;letter-spacing:.12em;text-transform:uppercase;color:#c5d2f0;\">TimeCapsule</p>"
+                + "<h1 style=\"margin:0 0 8px 0;font-size:28px;line-height:1.2;font-weight:700;color:#ffffff;\">" + safeTitle + "</h1>"
+                + "<p style=\"margin:0;font-size:14px;line-height:1.6;color:#d5e1fa;\">" + safeSubtitle + "</p>"
+                + "</td></tr>"
+                + "<tr><td style=\"padding:24px 28px 18px 28px;\">" + bodyContentHtml + "</td></tr>"
+                + actionBlock
+                + "<tr><td style=\"padding:0 28px 24px 28px;\">"
+                + "<p style=\"margin:0;font-size:12px;line-height:1.55;color:#8ea0c4;\">" + safeFooterNote + "</p>"
+                + "</td></tr>"
+                + "</table>"
+                + "<p style=\"max-width:640px;margin:12px auto 0 auto;font-size:11px;line-height:1.5;color:#6f83a8;\">Automated message from TimeCapsule</p>"
+                + "</td></tr></table></body></html>";
     }
 
     private String resolveDisplayName(User user) {

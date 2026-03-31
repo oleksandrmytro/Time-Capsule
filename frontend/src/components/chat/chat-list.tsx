@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Search, Loader2, MessageCircle } from "lucide-react"
 import { getConversations, type ChatConversation, getFollowing, type UserPublic } from "@/services/api"
@@ -52,68 +51,103 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
   }
 
   const startable = filteredFollowing.filter(f => !conversations.some(c => c.user.id === f.id))
+  const showEmptyConversations = filteredConvs.length === 0 && startable.length === 0
 
   return (
-    <div className="flex h-full flex-col border-r border-border bg-card">
-      <div className="border-b border-border p-4">
-        <h2 className="mb-3 font-serif text-lg font-semibold text-card-foreground">Messages</h2>
+    <div className="flex h-full min-h-0 flex-col bg-slate-950/30">
+      <div className="border-b border-white/10 p-4 sm:p-5">
+        <h2 className="mb-3 font-serif text-lg font-semibold text-slate-100">Messages</h2>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search conversations..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            placeholder="Search conversations..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-10 rounded-xl border border-white/10 bg-white/[0.04] pl-9 text-slate-100 placeholder:text-slate-400 focus-visible:border-violet-300/55 focus-visible:ring-1 focus-visible:ring-violet-300/60"
+          />
         </div>
       </div>
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          </div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center text-sm text-muted-foreground">
+          <div className="flex flex-col items-center justify-center p-8 text-center text-sm text-slate-400">
             {error}
           </div>
         ) : (
           <div className="flex flex-col">
             {filteredConvs.map((conv) => (
-              <button key={conv.id} onClick={() => navigate(`/chat/${conv.user.id}`)}
-                className={`flex items-start gap-3 border-b border-border p-4 transition-colors hover:bg-muted/50 w-full text-left bg-transparent ${selectedUserId === conv.user.id ? "bg-muted" : ""}`}>
+              <button
+                key={conv.id}
+                onClick={() => navigate(`/chat/${conv.user.id}`)}
+                className={`group flex w-full items-start gap-3 border-b border-white/6 bg-transparent px-4 py-3.5 text-left transition-colors ${selectedUserId === conv.user.id ? "bg-violet-500/14 ring-1 ring-inset ring-violet-300/35" : "hover:bg-white/[0.05]"}`}
+              >
                 <div className="relative shrink-0">
-                  <Avatar className="h-11 w-11"><AvatarImage src={conv.user.avatar} /><AvatarFallback className="bg-accent/10 text-accent">{conv.user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
-                  {conv.user.isOnline && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />}
+                  <Avatar className="h-11 w-11 border border-white/10">
+                    <AvatarImage src={conv.user.avatar} />
+                    <AvatarFallback className="bg-violet-400/18 text-cyan-100">
+                      {conv.user.displayName.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  {conv.user.isOnline && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-slate-900 bg-emerald-400" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="truncate font-medium text-card-foreground">{conv.user.displayName}</p>
-                    <span className="shrink-0 text-xs text-muted-foreground">{formatTime(conv.lastMessage.timestamp)}</span>
+                  <div className="flex items-start gap-2">
+                    <p className="min-w-0 flex-1 truncate font-medium text-slate-100">{conv.user.displayName}</p>
+                    <span className="hidden shrink-0 text-xs text-slate-400 lg:inline">{formatTime(conv.lastMessage.timestamp)}</span>
                   </div>
-                  <p className={`mt-0.5 truncate text-sm ${!conv.lastMessage.isRead && !conv.lastMessage.fromMe ? "font-medium text-card-foreground" : "text-muted-foreground"}`}>
+                  <p className={`mt-0.5 min-w-0 line-clamp-2 break-words [overflow-wrap:anywhere] text-sm leading-snug ${!conv.lastMessage.isRead && !conv.lastMessage.fromMe ? "font-medium text-slate-100" : "text-slate-400"}`}>
                     {conv.lastMessage.fromMe && "You: "}{conv.lastMessage.text}
                   </p>
                 </div>
-                {!conv.lastMessage.isRead && !conv.lastMessage.fromMe && <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-accent" />}
+                {!conv.lastMessage.isRead && !conv.lastMessage.fromMe && (
+                  <span className="mt-1 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-cyan-300/20 px-1.5 text-[10px] font-semibold text-cyan-100">
+                    1
+                  </span>
+                )}
               </button>
             ))}
 
             {startable.length > 0 && (
               <div className="p-4">
-                <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">Start chat with followers</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Start chat with followers</p>
                 <div className="flex flex-col gap-2">
                   {startable.map(u => (
-                    <button key={u.id} onClick={() => navigate(`/chat/${u.id}`)}
-                      className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left hover:bg-muted/50">
+                    <button
+                      key={u.id}
+                      onClick={() => navigate(`/chat/${u.id}`)}
+                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-white/[0.06]"
+                    >
                       <div className="relative shrink-0">
-                        <Avatar className="h-9 w-9"><AvatarImage src={u.avatar} /><AvatarFallback className="bg-accent/10 text-accent">{u.displayName.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
+                        <Avatar className="h-9 w-9 border border-white/10">
+                          <AvatarImage src={u.avatar} />
+                          <AvatarFallback className="bg-violet-400/18 text-cyan-100">
+                            {u.displayName.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-card-foreground">{u.displayName}</p>
-                        <p className="truncate text-xs text-muted-foreground">@{u.username}</p>
+                        <p className="truncate text-sm font-medium text-slate-100">{u.displayName}</p>
+                        <p className="truncate text-xs text-slate-400">@{u.username}</p>
                       </div>
-                      <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                      <MessageCircle className="h-4 w-4 text-cyan-200" />
                     </button>
                   ))}
                 </div>
               </div>
             )}
+
+            {showEmptyConversations && (
+              <div className="px-6 py-10 text-center">
+                <p className="text-sm text-slate-400">No conversations yet.</p>
+                <p className="mt-1 text-xs text-slate-500">Start a chat from your followers list.</p>
+              </div>
+            )}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   )
 }

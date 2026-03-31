@@ -262,8 +262,7 @@ Object.entries(collectionConfigs).forEach(([collectionName, config]) => {
   }
   
   if (!schema) {
-    print(`❌ No schema available for ${collectionName}, skipping...`);
-    return;
+    throw new Error(`Schema ${config.schemaVar} was not loaded for collection ${collectionName}`);
   }
   
   // Create collection with schema validation and sharding
@@ -274,7 +273,7 @@ Object.entries(collectionConfigs).forEach(([collectionName, config]) => {
     config.description,
     config.options
   );
-  
+
   // Create additional indexes
   if (config.indexes && config.indexes.length > 0) {
     print(`📊 Creating ${config.indexes.length} indexes for ${collectionName}...`);
@@ -308,11 +307,11 @@ print(`\n🎉 Schema initialization completed!`);
 print(`📊 Created ${Object.keys(collectionConfigs).length} sharded collections with validation`);
 print(`🔍 All schemas are loaded from /database/schemas/`);
 
-// Auto-import demo datasets (users/tags/capsules)
+// Auto-import seed datasets from CSV files
 try {
   print(`\n📦 Running import_datasets.js...`);
   load('./scripts/import_datasets.js');
-  print(`✅ Demo datasets import finished.`);
+  print(`✅ Dataset import finished.`);
 } catch (e) {
   print(`⚠️ import_datasets.js failed: ${e}`);
 }

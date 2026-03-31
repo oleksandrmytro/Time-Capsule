@@ -1,11 +1,11 @@
-// CSV-based demo seed for Time Capsule.
+// CSV-based dataset seed for Time Capsule.
 // Run with: mongosh /scripts/import_datasets.js
 
 const fs = require("fs");
 
 const SEED_PATH = process.env.SEED_DATA_PATH || "/seed-data";
 const dbName = "time-capsule";
-const db = db.getSiblingDB(dbName);
+const mongoDb = db.getSiblingDB(dbName);
 
 const COLLECTION_ORDER = [
   "tags",
@@ -32,9 +32,9 @@ function splitCsvLine(line) {
     const ch = line[i];
     const next = i + 1 < line.length ? line[i + 1] : "";
 
-    if (ch === '"') {
-      if (inQuotes && next === '"') {
-        cur += '"';
+    if (ch === "\"") {
+      if (inQuotes && next === "\"") {
+        cur += "\"";
         i++;
       } else {
         inQuotes = !inQuotes;
@@ -61,8 +61,8 @@ function readCsv(filePath) {
 
   const lines = raw
     .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 
   if (lines.length < 2) return [];
 
@@ -72,8 +72,8 @@ function readCsv(filePath) {
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCsvLine(lines[i]);
     const row = {};
-    headers.forEach((h, idx) => {
-      row[h] = cols[idx] ?? "";
+    headers.forEach((header, idx) => {
+      row[header] = cols[idx] ?? "";
     });
     rows.push(row);
   }
@@ -82,7 +82,7 @@ function readCsv(filePath) {
 }
 
 function resetCollections() {
-  COLLECTION_ORDER.forEach((name) => db.getCollection(name).deleteMany({}));
+  COLLECTION_ORDER.forEach((name) => mongoDb.getCollection(name).deleteMany({}));
 }
 
 function importCollection(name) {
@@ -90,34 +90,34 @@ function importCollection(name) {
   const rows = readCsv(path);
 
   if (!rows.length) {
-    print(`⚠️ ${name}: no rows in ${path}`);
+    print(`[skip] ${name}: no rows in ${path}`);
     return;
   }
 
   const docs = rows
-    .filter((r) => r.doc && r.doc.trim().length > 0)
-    .map((r) => EJSON.parse(r.doc));
+    .filter((row) => row.doc && row.doc.trim().length > 0)
+    .map((row) => EJSON.parse(row.doc));
 
   if (!docs.length) {
-    print(`⚠️ ${name}: no valid doc payloads in ${path}`);
+    print(`[skip] ${name}: no valid doc payloads in ${path}`);
     return;
   }
 
-  db.getCollection(name).insertMany(docs, {
+  mongoDb.getCollection(name).insertMany(docs, {
     ordered: true,
     bypassDocumentValidation: true
   });
 
-  print(`✅ ${name}: ${docs.length} docs imported`);
+  print(`[ok] ${name}: ${docs.length} docs imported`);
 }
 
 function printSummary() {
-  print("\n=== Demo dataset seeded from CSV ===");
-  COLLECTION_ORDER.forEach((c) => print(`${c}: ${db.getCollection(c).countDocuments()}`));
-  print("\nAdmin login (dev bootstrap): admin@timecapsule.local / DemoPass123!");
+  print("\n=== Dataset seeded from CSV ===");
+  COLLECTION_ORDER.forEach((name) => print(`${name}: ${mongoDb.getCollection(name).countDocuments()}`));
+  print("\nAdmin login: control.center@timecapsule.app / ControlRoom2026!");
 }
 
-print("🚀 Importing realistic demo dataset from /data/*.csv ...");
+print("[seed] Importing dataset from /seed-data/*.csv ...");
 resetCollections();
 COLLECTION_ORDER.forEach(importCollection);
 printSummary();

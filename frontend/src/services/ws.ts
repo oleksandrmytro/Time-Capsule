@@ -1,5 +1,6 @@
-import { Client, IMessage } from '@stomp/stompjs'
+ import { Client, IMessage } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
+import type { MediaMimeType } from '@/lib/media-types'
 
 let client: Client | null = null
 let connected = false
@@ -22,18 +23,20 @@ export interface ChatStreamCallbacks {
 
 export interface ChatWsMessage {
   id: string
-  type?: 'text' | 'image' | 'video' | 'capsule_share'
+  type?: 'text' | 'image' | 'video' | 'capsule_share' | 'presence'
   text: string
   fromUserId?: string
   fromMe: boolean
   timestamp: string
   status?: string
+  userId?: string
+  isOnline?: boolean
   capsuleId?: string
   capsuleTitle?: string
   replyToMessageId?: string | null
   mediaUrl?: string | null
   mediaKind?: 'image' | 'video' | null
-  mimeType?: string | null
+  mimeType?: MediaMimeType | null
 }
 
 let chatCallbacks: ChatStreamCallbacks = {}

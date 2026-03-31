@@ -43,17 +43,17 @@ export function ProfileUsersGrid({
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between px-1">
         <div className="flex flex-col gap-0.5">
-          <p className="text-base font-semibold text-card-foreground">
+          <p className="text-base font-semibold text-slate-100">
              {heading}
           </p>
-          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+          {subtitle && <p className="text-xs text-slate-400">{subtitle}</p>}
         </div>
-        <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
+        <div className="flex gap-1 rounded-lg border border-white/14 bg-white/[0.04] p-1">
           <Button
             type="button"
-            variant={viewMode === "grid" ? "secondary" : "ghost"}
+            variant="ghost"
             size="sm"
-            className="h-9 w-9 p-0"
+            className={`h-9 w-9 p-0 ${viewMode === "grid" ? "border border-cyan-300/35 bg-cyan-300/16 text-cyan-100" : "text-slate-300 hover:bg-white/[0.1] hover:text-slate-100"}`}
             onClick={() => setViewMode("grid")}
             title="Grid view"
           >
@@ -62,9 +62,9 @@ export function ProfileUsersGrid({
           </Button>
           <Button
             type="button"
-            variant={viewMode === "list" ? "secondary" : "ghost"}
+            variant="ghost"
             size="sm"
-            className="h-9 w-9 p-0"
+            className={`h-9 w-9 p-0 ${viewMode === "list" ? "border border-cyan-300/35 bg-cyan-300/16 text-cyan-100" : "text-slate-300 hover:bg-white/[0.1] hover:text-slate-100"}`}
             onClick={() => setViewMode("list")}
             title="List view"
           >
@@ -86,6 +86,7 @@ export function ProfileUsersGrid({
               onUnfollow={onUnfollow}
               layout="column"
               currentUserId={currentUserId}
+              appearance="dark"
             />
           ))}
         </div>
@@ -101,6 +102,7 @@ export function ProfileUsersGrid({
               onUnfollow={onUnfollow}
               layout="row"
               currentUserId={currentUserId}
+              appearance="dark"
             />
           ))}
         </div>

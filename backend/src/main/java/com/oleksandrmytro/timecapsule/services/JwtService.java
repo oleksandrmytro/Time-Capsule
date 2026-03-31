@@ -83,10 +83,18 @@ public class JwtService {
             extra.put("email", u.getEmail());
             extra.put("username", u.getUsernameField());
             extra.put("role", u.getRoleDb());
-            extra.put("token_type", "refresh");
-            extra.put("kid", secretVersion);
         }
-        return buildToken(extra, userDetails, refreshExpiration);
+        return generateRefreshToken(extra, userDetails);
+    }
+
+    public String generateRefreshToken(Map<String, Object> extraClaims, UserDetails userDetails) {
+        Map<String, Object> claims = new HashMap<>();
+        if (extraClaims != null) {
+            claims.putAll(extraClaims);
+        }
+        claims.put("token_type", "refresh");
+        claims.put("kid", secretVersion);
+        return buildToken(claims, userDetails, refreshExpiration);
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.oleksandrmytro.timecapsule.config;
 
+import com.oleksandrmytro.timecapsule.models.User;
 import com.oleksandrmytro.timecapsule.services.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -13,18 +14,19 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
-import org.springframework.util.StringUtils;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 
 /**
  * JWT Authentication Filter that processes JWT tokens in requests.
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    
+
     private final HandlerExceptionResolver handlerExceptionResolver;
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
@@ -47,12 +49,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
         // Шукаємо токен в Authorization header.
         final String authHeader = request.getHeader("Authorization");
-        // bearer - означає предявний, тобто той, хто його має, отримує доступ
         String bearer = authHeader;
 
-        // Якщо немає Authorization header, шукаємо в cookie з імям "accessToken"
         if (bearer == null) {
-            String cookieJwt = extractCookie(request, "accessToken"); // читає кукі
+            // Якщо немає Authorization header, шукаємо JWT у cookie "accessToken".
+            String cookieJwt = extractCookie(request, "accessToken");
             if (StringUtils.hasText(cookieJwt)) {
                 bearer = "Bearer " + cookieJwt;
             }
@@ -63,40 +64,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
-        /*
-        Які критерії має відповідати вхідний запит, щоб бути переданим у middleware додатку:
-        1. URL запиту має відповідати /auth/signup або /auth/login
-        2. Кожен запит має оброблятися як новий, не повинна створюватися або використовуватися сесія.
-        3. Має використовуватися кастомний authentication provider (JwtAuthenticationProvider).
-        4. Має виконуватися перед middleware додатку (UsernamePasswordAuthenticationFilter).
-        5. CORS-конфігурація дозволяє лише POST та GET запити.
-         */
-
         try {
-            // Витягуємо subject з JWT — тепер це userId (раніше був email)
             final String jwt = bearer.substring(7);
+            // Витягуємо subject з JWT — у нашому форматі це userId.
             final String userId = jwtService.extractUsername(jwt);
             if (userId != null) {
                 UserDetails userDetails;
                 try {
-                    // Завантажуємо користувача з бази за userId (ApplicationConfiguration шукає по findById)
+                    // Завантажуємо користувача з бази за userId.
                     userDetails = this.userDetailsService.loadUserByUsername(userId);
                 } catch (UsernameNotFoundException e) {
-                    // Treat missing user as anonymous and continue without failing the request
+                    // Якщо користувач не знайдений — пропускаємо запит як анонімний.
                     filterChain.doFilter(request, response);
                     return;
                 }
-                // Перевіряємо що JWT валідний та не expired
-                if (jwtService.isTokenValid(jwt, userDetails)) {
-                    // Створюємо Authentication з principal = User об'єкт
+
+                if (jwtService.isTokenValid(jwt, userDetails) && isAllowedForSession(userDetails)) {
+                    // Передаємо імперсонацію в request attributes для контролерів/UI.
+                    String adminId = jwtService.extractClaim(jwt, claims -> claims.get("impersonatedByAdminId", String.class));
+                    String adminEmail = jwtService.extractClaim(jwt, claims -> claims.get("impersonatedByAdminEmail", String.class));
+                    Boolean active = jwtService.extractClaim(jwt, claims -> claims.get("impersonationActive", Boolean.class));
+                    request.setAttribute("impersonation.active", Boolean.TRUE.equals(active) || (adminId != null && !adminId.isBlank()));
+                    request.setAttribute("impersonation.adminId", adminId);
+                    request.setAttribute("impersonation.adminEmail", adminEmail);
+
+                    // Створюємо Authentication з principal = User об'єкт.
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            userDetails,    // principal — це UserDetails, який містить інформацію про користувача
+                            userDetails,
                             null,
                             userDetails.getAuthorities()
                     );
-
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
+                } else {
+                    SecurityContextHolder.clearContext();
                 }
             }
 
@@ -114,5 +115,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
         }
         return null;
+    }
+
+    private boolean isAllowedForSession(UserDetails userDetails) {
+        if (!(userDetails instanceof User user)) {
+            return true;
+        }
+        if (user.getDeletedAt() != null) {
+            return false;
+        }
+        if (!user.isEnabled()) {
+            return false;
+        }
+        return user.getBlockedUntil() == null || !user.getBlockedUntil().isAfter(LocalDateTime.now());
     }
 }

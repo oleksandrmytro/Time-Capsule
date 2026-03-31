@@ -1,5 +1,7 @@
 /* ── Types ─────────────────────────────── */
 
+import type { MediaMimeType } from "@/lib/media-types"
+
 export interface ApiRequestOptions {
   method?: string
   body?: unknown
@@ -34,6 +36,10 @@ export interface UserProfile {
   capsulesCount?: number
   createdAt?: string
   role?: string
+  mustChangePassword?: boolean
+  impersonating?: boolean
+  actingAdminId?: string
+  actingAdminEmail?: string
 }
 
 export interface UserPublic {
@@ -79,13 +85,13 @@ export interface ChatMessage {
   replyToMessageId?: string | null
   mediaUrl?: string | null
   mediaKind?: 'image' | 'video' | null
-  mimeType?: string | null
+  mimeType?: MediaMimeType | null
 }
 
 export interface ChatAttachmentUploadResponse {
   url: string
   mediaKind: 'image' | 'video'
-  mimeType: string
+  mimeType: MediaMimeType
 }
 
 export interface MediaItem {
@@ -121,6 +127,7 @@ export interface ReactionSummary {
 
 export interface Capsule {
   id: string
+  ownerId?: string | null
   title: string
   body?: string | null
   status: 'draft' | 'sealed' | 'opened'
@@ -169,6 +176,21 @@ export interface CapsuleMapMarker {
   openedAt?: string | null
   tags?: string[] | null
   coordinates: [number, number] // [lon, lat]
+}
+
+const OBJECT_ID_RE = /^[a-fA-F0-9]{24}$/
+
+function normalizeObjectId(id: string, label = 'id'): string {
+  let normalized = String(id || '').trim()
+  try {
+    normalized = decodeURIComponent(normalized)
+  } catch {
+    // keep original segment
+  }
+  if (!OBJECT_ID_RE.test(normalized)) {
+    throw { status: 400, message: `Invalid ${label}` } as ApiError
+  }
+  return normalized
 }
 
 /* ── Helpers ───────────────────────────── */
@@ -254,6 +276,18 @@ export async function updateCurrentUser(payload: Partial<UserProfile>): Promise<
   return apiRequest('/api/users/me', { method: 'PATCH', body: payload })
 }
 
+export async function requestPasswordChangeCode(): Promise<void> {
+  await apiRequest('/api/users/me/password/request-code', { method: 'POST' })
+}
+
+export async function confirmPasswordChangeByCode(payload: { code: string; newPassword: string }): Promise<void> {
+  await apiRequest('/api/users/me/password/confirm', { method: 'POST', body: payload })
+}
+
+export async function changeMyPassword(payload: { currentPassword: string; newPassword: string }): Promise<void> {
+  await apiRequest('/api/users/me/password/change', { method: 'POST', body: payload })
+}
+
 export async function searchUsers(query: string): Promise<UserPublic[]> {
   return apiRequest(`/api/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' })
 }
@@ -276,7 +310,8 @@ export async function listCapsuleMapMarkers(): Promise<CapsuleMapMarker[]> {
 
 // Повертає деталі капсули за її ID
 export async function getCapsule(id: string): Promise<Capsule> {
-  return apiRequest(`/api/capsules/${id}`, { method: 'GET' })
+  const normalizedId = normalizeObjectId(id, 'capsule id')
+  return apiRequest(`/api/capsules/${normalizedId}`, { method: 'GET' })
 }
 
 // Розблоковує капсулу, якщо настав час розблокування
@@ -430,7 +465,7 @@ export async function sendChatMessage(
     replyToMessageId?: string | null
     mediaUrl?: string | null
     mediaKind?: 'image' | 'video' | null
-    mimeType?: string | null
+    mimeType?: MediaMimeType | null
   }
 ): Promise<ChatMessage> {
   const replyToMessageId = payload.replyToMessageId && /^[a-fA-F0-9]{24}$/.test(payload.replyToMessageId)
@@ -502,21 +537,39 @@ export interface Tag {
   createdAt?: string
 }
 
+function normalizeTagPayload(payload: any): Tag {
+  const rec = (payload && typeof payload === 'object') ? payload as Record<string, unknown> : {}
+  const idRaw = rec.id ?? rec._id ?? ''
+  return {
+    id: typeof idRaw === 'string' ? idRaw : String(idRaw || ''),
+    name: typeof rec.name === 'string' ? rec.name : '',
+    imageUrl: typeof rec.imageUrl === 'string' ? rec.imageUrl : null,
+    isSystem: Boolean(rec.isSystem ?? rec.system),
+    createdBy: typeof rec.createdBy === 'string' ? rec.createdBy : null,
+    createdAt: typeof rec.createdAt === 'string' ? rec.createdAt : undefined,
+  }
+}
+
+function normalizeTagListPayload(payload: any): Tag[] {
+  if (!Array.isArray(payload)) return []
+  return payload.map(normalizeTagPayload).filter((tag) => !!tag.name)
+}
+
 /* ── Tag API ───────────────────────────── */
 
 export async function listTags(): Promise<Tag[]> {
-  return apiRequest('/api/tags', { method: 'GET' })
+  return normalizeTagListPayload(await apiRequest('/api/tags', { method: 'GET' }))
 }
 
 export async function searchTags(query: string): Promise<Tag[]> {
-  return apiRequest(`/api/tags/search?q=${encodeURIComponent(query)}`, { method: 'GET' })
+  return normalizeTagListPayload(await apiRequest(`/api/tags/search?q=${encodeURIComponent(query)}`, { method: 'GET' }))
 }
 
 export async function createTag(name: string, imageFile?: File | null): Promise<Tag> {
   const form = new FormData();
   form.append('name', name);
   if (imageFile) form.append('image', imageFile);
-  return apiRequest('/api/tags', { method: 'POST', body: form, headers: {} });
+  return normalizeTagPayload(await apiRequest('/api/tags', { method: 'POST', body: form, headers: {} }));
 }
 
 /* ── Calendar API ──────────────────────── */
@@ -541,6 +594,7 @@ export interface AdminUser {
   role: string
   enabled: boolean
   status?: 'active' | 'blocked' | 'disabled' | 'deleted'
+  mustChangePassword?: boolean
   isOnline: boolean
   avatarUrl: string
   createdAt: string
@@ -590,8 +644,29 @@ export async function adminGetStats(): Promise<Record<string, number>> {
   return apiRequest('/api/admin/stats', { method: 'GET' })
 }
 
-export async function adminListUsers(q = '', page = 0, size = 20, includeDeleted = false, onlyBlocked = false): Promise<AdminPagedResponse<AdminUser>> {
-  return apiRequest(`/api/admin/users?q=${encodeURIComponent(q)}&page=${page}&size=${size}&includeDeleted=${includeDeleted}&onlyBlocked=${onlyBlocked}`, { method: 'GET' })
+export async function adminListUsers(
+  q = '',
+  page = 0,
+  size = 20,
+  role: 'all' | 'admin' | 'regular' = 'all',
+  status: 'all' | 'active' | 'blocked' | 'pending' | 'disabled' | 'deleted' = 'all',
+  includeDeleted = false,
+  onlyBlocked = false
+): Promise<AdminPagedResponse<AdminUser>> {
+  return apiRequest(
+    `/api/admin/users?q=${encodeURIComponent(q)}&page=${page}&size=${size}&role=${encodeURIComponent(role)}&status=${encodeURIComponent(status)}&includeDeleted=${includeDeleted}&onlyBlocked=${onlyBlocked}`,
+    { method: 'GET' }
+  )
+}
+
+export async function adminCreateUser(payload: {
+  username: string
+  email: string
+  password: string
+  role?: string
+  enabled?: boolean
+}): Promise<AdminUser> {
+  return apiRequest('/api/admin/users', { method: 'POST', body: payload })
 }
 
 export async function adminUpdateUser(id: string, updates: Record<string, unknown>): Promise<AdminUser> {
@@ -606,8 +681,20 @@ export async function adminRestoreUser(id: string): Promise<AdminUser> {
   return apiRequest(`/api/admin/users/${id}/restore`, { method: 'POST' })
 }
 
+export async function adminSendTemporaryPassword(id: string): Promise<{ message: string }> {
+  return apiRequest(`/api/admin/users/${id}/password/temporary`, { method: 'POST' })
+}
+
+export async function adminImpersonateUser(id: string): Promise<{ impersonating?: boolean; actingAdminId?: string; actingAdminEmail?: string }> {
+  return apiRequest(`/api/admin/users/${id}/impersonate`, { method: 'POST' })
+}
+
 export async function adminBulkUsers(ids: string[], action: string, value?: string): Promise<{ modified: number }> {
   return apiRequest('/api/admin/users/bulk', { method: 'POST', body: { ids, action, value } })
+}
+
+export async function stopImpersonation(): Promise<void> {
+  await apiRequest('/api/auth/impersonation/stop', { method: 'POST' })
 }
 
 export async function adminListCapsules(q = '', page = 0, size = 20, includeDeleted = false): Promise<AdminPagedResponse<AdminCapsule>> {
@@ -631,7 +718,7 @@ export async function adminUpdateCapsule(id: string, updates: Record<string, unk
 }
 
 export async function adminListTags(): Promise<Tag[]> {
-  return apiRequest('/api/admin/tags', { method: 'GET' })
+  return normalizeTagListPayload(await apiRequest('/api/admin/tags', { method: 'GET' }))
 }
 
 export async function adminDeleteTag(id: string): Promise<void> {
@@ -639,11 +726,11 @@ export async function adminDeleteTag(id: string): Promise<void> {
 }
 
 export async function adminCreateTag(payload: { name: string; imageUrl?: string | null }): Promise<Tag> {
-  return apiRequest('/api/admin/tags', { method: 'POST', body: payload })
+  return normalizeTagPayload(await apiRequest('/api/admin/tags', { method: 'POST', body: payload }))
 }
 
 export async function adminUpdateTag(id: string, updates: Record<string, unknown>): Promise<Tag> {
-  return apiRequest(`/api/admin/tags/${id}`, { method: 'PATCH', body: updates })
+  return normalizeTagPayload(await apiRequest(`/api/admin/tags/${id}`, { method: 'PATCH', body: updates }))
 }
 
 export async function adminBulkTags(ids: string[], action: string): Promise<{ modified: number }> {

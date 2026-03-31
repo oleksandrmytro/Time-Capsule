@@ -7,6 +7,8 @@ import com.oleksandrmytro.timecapsule.repositories.CapsuleRepository;
 import com.oleksandrmytro.timecapsule.repositories.FollowRepository;
 import com.oleksandrmytro.timecapsule.repositories.UserRepository;
 import org.bson.types.ObjectId;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -14,18 +16,33 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class UserService {
+    private static final int PASSWORD_CHANGE_CODE_TTL_MINUTES = 15;
+
     private final UserRepository userRepository;
+    private final EmailService emailService;
+    private final PasswordEncoder passwordEncoder;
     private final MongoTemplate mongoTemplate;
     private final FollowRepository followRepository;
     private final CapsuleRepository capsuleRepository;
 
-    public UserService(UserRepository userRepository, EmailService emailService, MongoTemplate mongoTemplate, FollowRepository followRepository, CapsuleRepository capsuleRepository) {
+    public UserService(
+            UserRepository userRepository,
+            EmailService emailService,
+            PasswordEncoder passwordEncoder,
+            MongoTemplate mongoTemplate,
+            FollowRepository followRepository,
+            CapsuleRepository capsuleRepository
+    ) {
         this.userRepository = userRepository;
+        this.emailService = emailService;
+        this.passwordEncoder = passwordEncoder;
         this.mongoTemplate = mongoTemplate;
         this.followRepository = followRepository;
         this.capsuleRepository = capsuleRepository;
@@ -51,6 +68,8 @@ public class UserService {
     public User updateProfile(String userId, UpdateProfileRequest req) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        String originalEmail = user.getEmail();
+        String originalUsername = user.getUsernameField();
 
         if (StringUtils.hasText(req.getUsername())) {
             user.setUsername(req.getUsername());
@@ -65,9 +84,26 @@ public class UserService {
             user.setAvatarUrl(req.getAvatarUrl());
         }
 
-        Query query = new Query(Criteria.where("_id").is(user.getId()).and("email").is(user.getEmail()));
-        mongoTemplate.findAndReplace(query, user);
-        return user;
+        Query targeted = new Query(Criteria.where("_id").is(user.getId()));
+        if (StringUtils.hasText(originalEmail)) {
+            targeted.addCriteria(Criteria.where("email").is(originalEmail));
+        }
+        if (StringUtils.hasText(originalUsername)) {
+            targeted.addCriteria(Criteria.where("username").is(originalUsername));
+        }
+
+        Update update = new Update()
+                .set("username", user.getUsernameField())
+                .set("email", user.getEmail())
+                .set("avatarUrl", user.getAvatarUrl())
+                .set("updatedAt", LocalDateTime.now());
+
+        var targetedResult = mongoTemplate.updateFirst(targeted, update, User.class);
+        if (targetedResult.getMatchedCount() == 0) {
+            mongoTemplate.updateFirst(new Query(Criteria.where("_id").is(user.getId())), update, User.class);
+        }
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
     public User getById(String userId) {
@@ -88,13 +124,32 @@ public class UserService {
         ObjectId target = new ObjectId(targetUserId);
         ObjectId follower = new ObjectId(followerId);
 
-        Query q = new Query(Criteria.where("userId").is(target).and("followerId").is(follower));
-        Update u = new Update()
-                .set("userId", target)
-                .set("followerId", follower)
-                .unset("deletedAt")
-                .setOnInsert("createdAt", java.time.Instant.now());
-        mongoTemplate.upsert(q, u, Follow.class);
+        Query active = new Query(Criteria.where("userId").is(target).and("followerId").is(follower).and("deletedAt").is(null));
+        if (mongoTemplate.exists(active, Follow.class)) {
+            return;
+        }
+
+        Query restore = new Query(Criteria.where("userId").is(target).and("followerId").is(follower).and("deletedAt").ne(null));
+        var restored = mongoTemplate.updateFirst(restore, new Update().unset("deletedAt"), Follow.class);
+        if (restored.getMatchedCount() > 0) {
+            return;
+        }
+
+        Follow created = new Follow();
+        created.setUserId(target);
+        created.setFollowerId(follower);
+        created.setCreatedAt(Instant.now());
+        created.setDeletedAt(null);
+        try {
+            mongoTemplate.insert(created);
+        } catch (DuplicateKeyException ignored) {
+            // Concurrent request created relation first; ensure it is active.
+            mongoTemplate.updateFirst(
+                    new Query(Criteria.where("userId").is(target).and("followerId").is(follower)),
+                    new Update().unset("deletedAt"),
+                    Follow.class
+            );
+        }
     }
 
     public void unfollow(String targetUserId, String followerId) {
@@ -154,5 +209,108 @@ public class UserService {
         } catch (IllegalArgumentException ex) {
             return 0;
         }
+    }
+
+    public void requestPasswordChangeCode(String userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (!StringUtils.hasText(user.getEmail())) {
+            throw new IllegalArgumentException("Email is not set for this account");
+        }
+
+        String code = generateCode();
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(PASSWORD_CHANGE_CODE_TTL_MINUTES);
+        mongoTemplate.updateFirst(
+                new Query(Criteria.where("_id").is(userId)),
+                new Update()
+                        .set("verificationCode", code)
+                        .set("verificationCodeExpiresAt", expiresAt)
+                        .set("updatedAt", LocalDateTime.now()),
+                User.class
+        );
+        emailService.sendPasswordChangeCode(user, code);
+    }
+
+    public void confirmPasswordChange(String userId, String code, String newPassword) {
+        if (!StringUtils.hasText(code)) {
+            throw new IllegalArgumentException("Verification code is required");
+        }
+        if (!StringUtils.hasText(newPassword)) {
+            throw new IllegalArgumentException("New password is required");
+        }
+        if (newPassword.length() < 8) {
+            throw new IllegalArgumentException("Password must be at least 8 characters");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        if (!StringUtils.hasText(user.getVerificationCode()) || !code.trim().equals(user.getVerificationCode())) {
+            throw new RuntimeException("Invalid verification code");
+        }
+        if (user.getVerificationCodeExpiresAt() == null || user.getVerificationCodeExpiresAt().isBefore(LocalDateTime.now())) {
+            mongoTemplate.updateFirst(
+                    new Query(Criteria.where("_id").is(userId)),
+                    new Update()
+                            .unset("verificationCode")
+                            .unset("verificationCodeExpiresAt")
+                            .set("updatedAt", LocalDateTime.now()),
+                    User.class
+            );
+            throw new RuntimeException("Verification code has expired");
+        }
+
+        mongoTemplate.updateFirst(
+                new Query(Criteria.where("_id").is(userId)),
+                new Update()
+                        .set("password", passwordEncoder.encode(newPassword))
+                        .set("mustChangePassword", false)
+                        .unset("verificationCode")
+                        .unset("verificationCodeExpiresAt")
+                        .set("updatedAt", LocalDateTime.now()),
+                User.class
+        );
+    }
+
+    public void changePasswordWithCurrent(String userId, String currentPassword, String newPassword) {
+        if (!StringUtils.hasText(currentPassword)) {
+            throw new IllegalArgumentException("Current password is required");
+        }
+        if (!StringUtils.hasText(newPassword)) {
+            throw new IllegalArgumentException("New password is required");
+        }
+        if (newPassword.length() < 8) {
+            throw new IllegalArgumentException("Password must be at least 8 characters");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new IllegalArgumentException("Current password is invalid");
+        }
+
+        Query targeted = new Query(Criteria.where("_id").is(user.getId()));
+        if (StringUtils.hasText(user.getEmail())) {
+            targeted.addCriteria(Criteria.where("email").is(user.getEmail()));
+        }
+        if (StringUtils.hasText(user.getUsernameField())) {
+            targeted.addCriteria(Criteria.where("username").is(user.getUsernameField()));
+        }
+        Update update = new Update()
+                .set("password", passwordEncoder.encode(newPassword))
+                .set("mustChangePassword", false)
+                .unset("verificationCode")
+                .unset("verificationCodeExpiresAt")
+                .set("updatedAt", LocalDateTime.now());
+
+        var result = mongoTemplate.updateFirst(targeted, update, User.class);
+        if (result.getMatchedCount() == 0) {
+            mongoTemplate.updateFirst(new Query(Criteria.where("_id").is(user.getId())), update, User.class);
+        }
+    }
+
+    private String generateCode() {
+        int code = (int) (Math.random() * 900_000) + 100_000;
+        return Integer.toString(code);
     }
 }

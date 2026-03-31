@@ -19,7 +19,6 @@ services:
       - ./scripts:/scripts
       - ./schemas:/schemas
       - ./data:/seed-data:ro
-      - mongodb_cluster_router01_db:/data/db
       - mongodb_cluster_router01_config:/data/configdb
 ## Config Servers
   configsvr01:

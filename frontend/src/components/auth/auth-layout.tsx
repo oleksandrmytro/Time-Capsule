@@ -1,5 +1,8 @@
-import { Timer } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { LockKeyhole, Timer } from "lucide-react"
+import { Link, useLocation, useNavigate } from "react-router-dom"
+import { cn } from "@/lib/utils"
+import { SpaceBackgroundFrame } from "@/components/space-background-frame"
+import "./auth-layout.css"
 
 interface AuthLayoutProps {
   children: React.ReactNode
@@ -10,6 +13,7 @@ interface AuthLayoutProps {
 
 export function AuthLayout({ children, title, subtitle, onHome }: AuthLayoutProps) {
   const navigate = useNavigate()
+  const location = useLocation()
 
   const handleHome = () => {
     if (onHome) onHome()
@@ -17,21 +21,62 @@ export function AuthLayout({ children, title, subtitle, onHome }: AuthLayoutProp
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <button onClick={handleHome} className="mb-6 flex items-center gap-2 bg-transparent border-none p-0 shadow-none hover:opacity-80">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Timer className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="font-serif text-2xl font-bold text-foreground">TimeCapsule</span>
+    <div className="auth-shell">
+      <div className="auth-background" aria-hidden="true">
+        <SpaceBackgroundFrame className="auth-space-canvas" restoreSnapshot startSettled />
+        <div className="auth-space-overlay" />
+        <div className="auth-vignette" />
+        <div className="auth-particles" />
+      </div>
+
+      <div className="auth-content">
+        <header className="auth-topbar">
+          <button onClick={handleHome} className="auth-logo-button" type="button" aria-label="Go home">
+            <span className="auth-logo-icon">
+              <Timer className="h-4 w-4" />
+            </span>
+            <span className="auth-logo-text">TimeCapsule</span>
           </button>
-          <h1 className="font-serif text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
-          {children}
-        </div>
+
+          <nav className="auth-top-nav" aria-label="Authentication pages">
+            <Link
+              to="/login"
+              className={cn("auth-top-link", location.pathname === "/login" && "is-active")}
+            >
+              Login
+            </Link>
+            <Link
+              to="/register"
+              className={cn("auth-top-link", location.pathname === "/register" && "is-active")}
+            >
+              Register
+            </Link>
+          </nav>
+        </header>
+
+        <main className="auth-stage">
+          <div className="auth-card-wrap">
+            <span className="auth-card-glow" aria-hidden="true" />
+            <span className="auth-card-orbit auth-card-orbit-outer" aria-hidden="true" />
+            <span className="auth-card-orbit auth-card-orbit-inner" aria-hidden="true" />
+
+            <section className="auth-card">
+              <div className="auth-card-kicker">
+                <span className="auth-card-kicker-icon">
+                  <LockKeyhole className="h-3.5 w-3.5" />
+                </span>
+                <span>Capsule Access</span>
+              </div>
+              <h1 className="auth-card-title">{title}</h1>
+              <p className="auth-card-subtitle">{subtitle}</p>
+              <div className="auth-card-body">{children}</div>
+            </section>
+          </div>
+        </main>
+
+        <footer className="auth-footer">
+          Built for memories that matter.
+        </footer>
       </div>
     </div>
   )

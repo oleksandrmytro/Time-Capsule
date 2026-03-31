@@ -3,7 +3,7 @@ import { CapsuleCard } from "./capsule-card"
 import { EmptyState } from "@/components/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
-import { Archive, Plus, ArrowLeft } from "lucide-react"
+import { Archive, Plus } from "lucide-react"
 import type { Capsule } from "@/services/api"
 
 interface CapsulesListProps {
@@ -15,13 +15,10 @@ interface CapsulesListProps {
 }
 
 export function CapsulesList({ capsules, isLoading, onSelect, onCreate, onBack }: CapsulesListProps) {
-  const navigate = useNavigate()
-
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 lg:px-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="mb-2 gap-1.5 text-muted-foreground -ml-3"><ArrowLeft className="h-4 w-4" /> Home</Button>
           <h1 className="font-serif text-3xl font-bold tracking-tight text-foreground">My Capsules</h1>
           <p className="mt-1 text-muted-foreground">Manage and view all your time capsules.</p>
         </div>

@@ -1,0 +1,19 @@
+.cosmic-landing {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.space-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.cosmic-landing .space-landing-frame {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

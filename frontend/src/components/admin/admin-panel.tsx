@@ -11,23 +11,47 @@ import { MediaUploader, type MediaFile } from "@/components/media/media-uploader
 import {
   Users, Archive, Tag, ArrowLeft,
   Search, ChevronLeft, ChevronRight, Trash2, Edit, Shield,
-  X, Loader2, Database, History, RotateCcw
+  X, Loader2, Database, History, RotateCcw, PanelLeftOpen, PanelLeftClose
 } from "lucide-react"
+import { AdminUsersWorkspace } from "@/components/admin/admin-users-workspace"
+import { AdminAuditWorkspace } from "@/components/admin/admin-audit-workspace"
 import {
   adminListUsers, adminUpdateUser, adminDeleteUser,
   adminListCapsules, adminDeleteCapsule, adminListTags, adminDeleteTag,
   adminUpdateCapsule, adminUpdateTag, adminListCollections, adminListCollectionDocs,
   adminUpdateCollectionDoc, adminDeleteCollectionDoc, adminRestoreUser, adminBulkUsers,
   adminRestoreCapsule, adminBulkCapsules, adminCreateTag, adminBulkTags, adminListAuditLogs,
-  uploadTagImage, uploadCoverImage, uploadCapsuleAttachment,
-  type AdminUser, type AdminCapsule, type Tag as TagType, type AdminCollectionDoc, type AdminAuditLog, type MediaItem
+  uploadTagImage, uploadCoverImage, uploadCapsuleAttachment, getUserProfile,
+  type AdminUser, type AdminCapsule, type Tag as TagType, type AdminCollectionDoc, type AdminAuditLog, type MediaItem, type UserProfile, type ApiError
 } from "@/services/api"
+import { IMAGE_ACCEPT_ATTR, MEDIA_ACCEPT_ATTR } from "@/lib/media-types"
+import { resolveTagImageUrl } from "@/lib/tag-image-url"
+
+const OBJECT_ID_RE = /^[a-fA-F0-9]{24}$/
+const KNOWN_SYSTEM_TAG_COVER_NAMES = new Set([
+  "travel", "birthday", "wedding", "graduation", "family", "friends", "love", "memory",
+  "achievement", "holiday", "music", "nature", "food", "sport", "art", "pet", "default",
+])
+
+function normalizeAdminCoverUrl(rawUrl: string | null | undefined): string {
+  if (!rawUrl) return ""
+  const value = rawUrl.trim()
+  const staticMatch = value.match(/^\/static\/tags\/([^/]+)\.(jpg|jpeg|png|webp|gif)$/i)
+  if (staticMatch) {
+    const tagName = staticMatch[1]?.toLowerCase() || ""
+    if (!KNOWN_SYSTEM_TAG_COVER_NAMES.has(tagName)) {
+      return "/static/tags/default.jpg"
+    }
+  }
+  return value
+}
 
 /* ── Admin Layout ──────────────────────── */
 
 export function AdminPanel() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const tabs = [
     { path: "/admin/users", label: "Users", icon: Users, desc: "Accounts and access" },
@@ -45,55 +69,127 @@ export function AdminPanel() {
   }, [location.pathname, navigate])
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 lg:px-8">
-      <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="mb-5 -ml-3 gap-1.5 text-muted-foreground">
-        <ArrowLeft className="h-4 w-4" /> Home
-      </Button>
-      <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-card/70 p-5 backdrop-blur-sm">
-        <h1 className="flex items-center gap-2 font-serif text-3xl font-bold tracking-tight text-foreground">
-          <Shield className="h-7 w-7" /> Admin Panel
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Centralized management for users, capsules, tags, audit trail and raw database documents.
-        </p>
-      </div>
+    <div className="min-h-[calc(100vh-4rem)] bg-[#0B1220] text-slate-100">
+      <div className="mx-auto flex w-full max-w-[1500px] gap-4 px-3 py-4 sm:px-4 lg:px-6">
+        <aside
+          className={`hidden shrink-0 rounded-2xl border border-white/10 bg-[#111827] transition-[width,padding] duration-300 ease-out lg:flex lg:flex-col ${
+            sidebarCollapsed ? "p-2.5 lg:w-[84px]" : "p-3 lg:w-[290px]"
+          }`}
+        >
+          <div className={`mb-3 flex items-center ${sidebarCollapsed ? "justify-center gap-1" : "justify-between"}`}>
+            <Button
+              variant="ghost"
+              size={sidebarCollapsed ? "icon" : "sm"}
+              onClick={() => navigate("/")}
+              className={`text-slate-300 hover:bg-white/10 hover:text-slate-100 ${
+                sidebarCollapsed ? "h-8 w-8" : "h-8 gap-1.5"
+              }`}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {!sidebarCollapsed && "Home"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarCollapsed((v) => !v)}
+              className="h-8 w-8 text-slate-300 hover:bg-white/10 hover:text-slate-100"
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
+          </div>
 
-      <div className="mb-7 rounded-2xl border border-border bg-card p-2">
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-          {tabs.map((tab) => {
-            const isActive = !!activeTab && activeTab.path === tab.path
-            const Icon = tab.icon
-            return (
-              <button
-                key={tab.path}
-                type="button"
-                onClick={() => navigate(tab.path)}
-                className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                  isActive
-                    ? "border-primary/40 bg-primary/10"
-                    : "border-border bg-background hover:border-primary/20 hover:bg-muted/40"
-                }`}
-              >
-                <div className="mb-1 flex items-center gap-2">
-                  <Icon className={`h-4 w-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
-                  <p className={`text-sm font-semibold ${isActive ? "text-primary" : "text-foreground"}`}>{tab.label}</p>
-                </div>
-                <p className="text-xs text-muted-foreground">{tab.desc}</p>
-              </button>
-            )
-          })}
+          {!sidebarCollapsed && (
+            <div className="mb-4 rounded-xl border border-white/10 bg-slate-900/50 px-3 py-2">
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Workspace</p>
+              <p className="mt-1 text-sm font-semibold text-slate-100">Admin Console</p>
+            </div>
+          )}
+
+          <nav className={`space-y-1.5 ${sidebarCollapsed ? "mt-1" : ""}`}>
+            {tabs.map((tab) => {
+              const isActive = !!activeTab && activeTab.path === tab.path
+              const Icon = tab.icon
+              return (
+                <button
+                  key={tab.path}
+                  type="button"
+                  onClick={() => navigate(tab.path)}
+                  className={`w-full rounded-xl border py-2.5 text-left transition-all duration-300 ${
+                    sidebarCollapsed ? "px-2" : "px-3"
+                  } ${
+                    isActive
+                      ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-100"
+                      : "border-transparent text-slate-300 hover:border-white/10 hover:bg-slate-900/60 hover:text-slate-100"
+                  }`}
+                >
+                  <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "gap-2.5"}`}>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!sidebarCollapsed && (
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{tab.label}</p>
+                        <p className="truncate text-xs text-slate-400">{tab.desc}</p>
+                      </div>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </nav>
+        </aside>
+
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#111827] px-4 py-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Admin Mode</p>
+              <h1 className="mt-1 flex items-center gap-2 text-xl font-semibold text-slate-100">
+                <Shield className="h-5 w-5 text-cyan-300" />
+                {activeTab?.label || "Users"}
+              </h1>
+              <p className="text-sm text-slate-400">{activeTab?.desc || "System management"}</p>
+            </div>
+            <div className="lg:hidden">
+              <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="text-slate-300 hover:bg-white/10 hover:text-slate-100">
+                <ArrowLeft className="mr-1.5 h-4 w-4" />
+                Home
+              </Button>
+            </div>
+          </div>
+
+          <div className="mb-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-[#111827] p-2 lg:hidden">
+            {tabs.map((tab) => {
+              const isActive = !!activeTab && activeTab.path === tab.path
+              const Icon = tab.icon
+              return (
+                <button
+                  key={tab.path}
+                  type="button"
+                  onClick={() => navigate(tab.path)}
+                  className={`rounded-lg border px-2.5 py-2 text-left transition-colors ${
+                    isActive
+                      ? "border-cyan-400/35 bg-cyan-500/10 text-cyan-100"
+                      : "border-white/10 bg-slate-900/45 text-slate-300 hover:text-slate-100"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4" />
+                    <p className="text-sm font-medium">{tab.label}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-[#111827] p-3 md:p-4">
+            <Routes>
+              <Route index element={<AdminUsersWorkspace />} />
+              <Route path="users" element={<AdminUsersWorkspace />} />
+              <Route path="capsules" element={<AdminCapsulesTable />} />
+              <Route path="tags" element={<AdminTagsTable />} />
+              <Route path="audit" element={<AdminAuditWorkspace />} />
+              <Route path="data" element={<AdminDataTable />} />
+            </Routes>
+          </div>
         </div>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card p-4 md:p-5">
-        <Routes>
-          <Route index element={<AdminUsersTable />} />
-          <Route path="users" element={<AdminUsersTable />} />
-          <Route path="capsules" element={<AdminCapsulesTable />} />
-          <Route path="tags" element={<AdminTagsTable />} />
-          <Route path="audit" element={<AdminAuditTable />} />
-          <Route path="data" element={<AdminDataTable />} />
-        </Routes>
       </div>
     </div>
   )
@@ -140,7 +236,7 @@ function AdminUsersTable() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await adminListUsers(search, page, SIZE, includeDeleted, onlyBlocked)
+      const res = await adminListUsers(search, page, SIZE, "all", "all", includeDeleted, onlyBlocked)
       setUsers(res.items || [])
       setTotal(res.total || 0)
     } catch {
@@ -237,6 +333,14 @@ function AdminUsersTable() {
       load()
     } catch {}
   }
+  const setUserBulkAction = (nextAction: string) => {
+    setBulkAction(nextAction)
+    if (nextAction === "role") {
+      setBulkValue("regular")
+      return
+    }
+    setBulkValue("")
+  }
 
   const totalPages = Math.ceil(total / SIZE)
 
@@ -262,7 +366,7 @@ function AdminUsersTable() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} className="h-9 rounded border border-border bg-background px-2 text-xs">
+        <select value={bulkAction} onChange={(e) => setUserBulkAction(e.target.value)} className="h-9 rounded border border-border bg-background px-2 text-xs">
           <option value="disable">Disable</option>
           <option value="enable">Enable</option>
           <option value="delete">Soft delete</option>
@@ -271,23 +375,33 @@ function AdminUsersTable() {
           <option value="block">Block until date</option>
           <option value="unblock">Unblock</option>
         </select>
-        {(bulkAction === "role" || bulkAction === "block") && (
+        {bulkAction === "role" && (
+          <select
+            value={bulkValue || "regular"}
+            onChange={(e) => setBulkValue(e.target.value)}
+            className="h-9 w-[220px] rounded border border-border bg-background px-2 text-xs"
+          >
+            <option value="regular">regular</option>
+            <option value="admin">admin</option>
+          </select>
+        )}
+        {bulkAction === "block" && (
           <Input
-            className="h-9 w-[220px]"
+            type="datetime-local"
+            className="h-9 w-[220px] [color-scheme:dark]"
             value={bulkValue}
             onChange={(e) => setBulkValue(e.target.value)}
-            placeholder={bulkAction === "role" ? "admin or regular" : "2026-03-20T12:00:00"}
           />
         )}
         <Button size="sm" disabled={selectedIds.length === 0} onClick={applyBulk}>Apply bulk ({selectedIds.length})</Button>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="rounded-xl border border-white/10 bg-slate-900/35 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+              <tr className="border-b border-white/10 bg-[#0d1527]">
+                <th className="px-4 py-3 text-left font-medium text-slate-400">
                   <input
                     type="checkbox"
                     checked={users.length > 0 && selectedIds.length === users.length}
@@ -385,11 +499,11 @@ function AdminUsersTable() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-center gap-2">
-          <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+          <Button variant="ghost" size="sm" className="text-slate-200 hover:bg-white/10" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
             <ChevronLeft className="h-4 w-4" /> Prev
           </Button>
-          <span className="text-sm text-muted-foreground">Page {page + 1} of {totalPages}</span>
-          <Button variant="ghost" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+          <span className="text-sm text-slate-400">Page {page + 1} of {totalPages}</span>
+          <Button variant="ghost" size="sm" className="text-slate-200 hover:bg-white/10" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
             Next <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -437,7 +551,7 @@ function AdminUsersTable() {
             {editAvatarFile ? <p className="text-xs text-muted-foreground">Selected: {editAvatarFile.name}</p> : null}
             <Input
               type="file"
-              accept="image/*"
+              accept={IMAGE_ACCEPT_ATTR}
               onChange={(e) => setEditAvatarFile(e.target.files?.[0] || null)}
             />
           </div>
@@ -472,6 +586,7 @@ function AdminUsersTable() {
               type="datetime-local"
               value={editBlockedUntil}
               onChange={(e) => setEditBlockedUntil(e.target.value)}
+              className="[color-scheme:dark]"
             />
             <p className="text-xs text-muted-foreground">Leave empty to remove block.</p>
           </div>
@@ -505,6 +620,7 @@ function AdminCapsulesTable() {
   const [bulkValue, setBulkValue] = useState("")
   const [editorOpen, setEditorOpen] = useState(false)
   const [savingEditor, setSavingEditor] = useState(false)
+  const [editorError, setEditorError] = useState<string | null>(null)
   const [editCapsuleId, setEditCapsuleId] = useState("")
   const [editTitle, setEditTitle] = useState("")
   const [editBody, setEditBody] = useState("")
@@ -515,6 +631,8 @@ function AdminCapsulesTable() {
   const [editUnlockAt, setEditUnlockAt] = useState("")
   const [editExpiresAt, setEditExpiresAt] = useState("")
   const [editOwnerId, setEditOwnerId] = useState("")
+  const [editOwnerProfile, setEditOwnerProfile] = useState<UserProfile | null>(null)
+  const [loadingOwnerProfile, setLoadingOwnerProfile] = useState(false)
   const [editTagsRaw, setEditTagsRaw] = useState("")
   const [editCoverValue, setEditCoverValue] = useState<File | string | null>(null)
   const [editMediaExisting, setEditMediaExisting] = useState<MediaItem[]>([])
@@ -545,6 +663,30 @@ function AdminCapsulesTable() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    const ownerId = editOwnerId.trim()
+    if (!OBJECT_ID_RE.test(ownerId)) {
+      setEditOwnerProfile(null)
+      setLoadingOwnerProfile(false)
+      return
+    }
+    let cancelled = false
+    setLoadingOwnerProfile(true)
+    getUserProfile(ownerId)
+      .then((profile) => {
+        if (!cancelled) setEditOwnerProfile(profile)
+      })
+      .catch(() => {
+        if (!cancelled) setEditOwnerProfile(null)
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingOwnerProfile(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [editOwnerId])
+
   const handleDelete = async (id: string) => {
     if (!confirm("Soft delete this capsule?")) return
     try {
@@ -568,8 +710,21 @@ function AdminCapsulesTable() {
       load()
     } catch {}
   }
+  const setCapsuleBulkAction = (nextAction: string) => {
+    setBulkAction(nextAction)
+    if (nextAction === "status") {
+      setBulkValue("draft")
+      return
+    }
+    if (nextAction === "visibility") {
+      setBulkValue("private")
+      return
+    }
+    setBulkValue("")
+  }
 
   const startEdit = (capsule: AdminCapsule) => {
+    setEditorError(null)
     setEditCapsuleId(capsule.id)
     setEditTitle(capsule.title || "")
     setEditBody(capsule.body || "")
@@ -581,7 +736,7 @@ function AdminCapsulesTable() {
     setEditExpiresAt(toLocalInputValue(capsule.expiresAt))
     setEditOwnerId(capsule.ownerId || "")
     setEditTagsRaw((capsule.tags || []).join(", "))
-    setEditCoverValue(capsule.coverImageUrl || null)
+    setEditCoverValue(normalizeAdminCoverUrl(capsule.coverImageUrl) || null)
     setEditMediaExisting((capsule.media || []).map((m) => ({
       id: String(m.id || crypto.randomUUID()),
       url: String(m.url || ""),
@@ -614,12 +769,13 @@ function AdminCapsulesTable() {
   const saveEdit = async () => {
     if (!editCapsuleId) return
     try {
+      setEditorError(null)
       setSavingEditor(true)
       let resolvedCover: string | null = null
       if (editCoverValue instanceof File) {
         resolvedCover = await uploadCoverImage(editCoverValue)
       } else {
-        resolvedCover = typeof editCoverValue === "string" ? editCoverValue : null
+        resolvedCover = typeof editCoverValue === "string" ? normalizeAdminCoverUrl(editCoverValue) : null
       }
 
       const replacedExisting: MediaItem[] = []
@@ -639,6 +795,22 @@ function AdminCapsulesTable() {
         uploaded.push(media)
       }
 
+      const ownerId = editOwnerId.trim()
+      const toInstantOrNull = (rawValue: string) => {
+        const value = rawValue.trim()
+        if (!value) return null
+        const date = new Date(value)
+        return Number.isNaN(date.getTime()) ? null : date.toISOString()
+      }
+      const normalizedMedia = [...replacedExisting, ...uploaded]
+        .filter((item) => !!item?.url)
+        .map((item) => ({
+          id: String(item.id || crypto.randomUUID()),
+          url: String(item.url),
+          type: item.type === "video" ? "video" : "image",
+          meta: item.meta ?? null,
+        }))
+
       await adminUpdateCapsule(editCapsuleId, {
         title: editTitle,
         body: editBody,
@@ -646,17 +818,19 @@ function AdminCapsulesTable() {
         status: editStatus,
         allowComments: editAllowComments,
         allowReactions: editAllowReactions,
-        unlockAt: editUnlockAt ? new Date(editUnlockAt).toISOString() : null,
-        expiresAt: editExpiresAt ? new Date(editExpiresAt).toISOString() : null,
-        ownerId: editOwnerId || null,
+        unlockAt: toInstantOrNull(editUnlockAt),
+        expiresAt: toInstantOrNull(editExpiresAt),
+        ownerId: OBJECT_ID_RE.test(ownerId) ? ownerId : null,
         tags: editTagsRaw.split(",").map((t) => t.trim()).filter(Boolean),
         coverImageUrl: resolvedCover,
-        media: [...replacedExisting, ...uploaded],
+        media: normalizedMedia,
       })
       setEditorOpen(false)
       setEditMediaReplacementFiles({})
       load()
-    } catch {
+    } catch (error) {
+      const apiError = error as ApiError | undefined
+      setEditorError(apiError?.message || "Failed to update capsule")
     } finally {
       setSavingEditor(false)
     }
@@ -666,10 +840,10 @@ function AdminCapsulesTable() {
 
   const statusColor = (status: string) => {
     switch (status) {
-      case "sealed": return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-      case "opened": return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-      case "draft": return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
-      default: return "bg-secondary text-secondary-foreground"
+      case "sealed": return "border border-amber-300/35 bg-amber-500/15 text-amber-100"
+      case "opened": return "border border-emerald-300/35 bg-emerald-500/15 text-emerald-100"
+      case "draft": return "border border-slate-300/30 bg-slate-500/18 text-slate-200"
+      default: return "border border-cyan-300/30 bg-cyan-500/15 text-cyan-100"
     }
   }
 
@@ -677,83 +851,102 @@ function AdminCapsulesTable() {
     <div>
       <div className="mb-4 flex items-center gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
             placeholder="Search capsules..."
-            className="pl-10"
+            className="border-white/15 bg-[#111827] pl-10 text-slate-100 placeholder:text-slate-500"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(0) }}
           />
         </div>
-        <p className="text-sm text-muted-foreground">{total} capsules</p>
-        <label className="text-xs text-muted-foreground inline-flex items-center gap-1">
+        <p className="text-sm text-slate-400">{total} capsules</p>
+        <label className="text-xs text-slate-400 inline-flex items-center gap-1">
           <input type="checkbox" checked={includeDeleted} onChange={(e) => { setIncludeDeleted(e.target.checked); setPage(0) }} /> include deleted
         </label>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} className="h-9 rounded border border-border bg-background px-2 text-xs">
+        <select value={bulkAction} onChange={(e) => setCapsuleBulkAction(e.target.value)} className="h-9 rounded border border-white/15 bg-[#111827] px-2 text-xs text-slate-100">
           <option value="delete">Soft delete</option>
           <option value="restore">Restore</option>
           <option value="status">Set status</option>
           <option value="visibility">Set visibility</option>
         </select>
-        {(bulkAction === "status" || bulkAction === "visibility") && (
-          <Input
-            className="h-9 w-[180px]"
-            value={bulkValue}
+        {bulkAction === "status" && (
+          <select
+            value={bulkValue || "draft"}
             onChange={(e) => setBulkValue(e.target.value)}
-            placeholder={bulkAction === "status" ? "draft/sealed/opened" : "private/public/shared"}
-          />
+            className="h-9 w-[180px] rounded border border-white/15 bg-[#111827] px-2 text-xs text-slate-100"
+          >
+            <option value="draft">draft</option>
+            <option value="sealed">sealed</option>
+            <option value="opened">opened</option>
+          </select>
         )}
-        <Button size="sm" disabled={selectedIds.length === 0} onClick={applyBulk}>Apply bulk ({selectedIds.length})</Button>
+        {bulkAction === "visibility" && (
+          <select
+            value={bulkValue || "private"}
+            onChange={(e) => setBulkValue(e.target.value)}
+            className="h-9 w-[180px] rounded border border-white/15 bg-[#111827] px-2 text-xs text-slate-100"
+          >
+            <option value="private">private</option>
+            <option value="public">public</option>
+            <option value="shared">shared</option>
+          </select>
+        )}
+        <Button size="sm" className="border border-cyan-300/25 bg-cyan-500/20 text-cyan-50 hover:bg-cyan-500/35" disabled={selectedIds.length === 0} onClick={applyBulk}>Apply bulk ({selectedIds.length})</Button>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="rounded-xl border border-white/10 bg-slate-900/35 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+              <tr className="border-b border-white/10 bg-slate-900/65">
+                <th className="px-4 py-3 text-left font-medium text-slate-400">
                   <input
                     type="checkbox"
                     checked={capsules.length > 0 && selectedIds.length === capsules.length}
                     onChange={(e) => setSelectedIds(e.target.checked ? capsules.map((c) => c.id) : [])}
                   />
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Capsule</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Visibility</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Unlock At</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tags</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Capsule</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Status</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Visibility</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Unlock At</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Tags</th>
+                <th className="px-4 py-3 text-right font-medium text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="border-b border-border">
-                    <td colSpan={7} className="px-4 py-3"><Skeleton className="h-5 w-full" /></td>
+                  <tr key={i} className="border-b border-white/10">
+                    <td colSpan={7} className="px-4 py-3"><Skeleton className="h-5 w-full bg-white/10" /></td>
                   </tr>
                 ))
               ) : capsules.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No capsules found</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">No capsules found</td></tr>
               ) : (
                 capsules.map(capsule => (
-                  <tr key={capsule.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                  <tr key={capsule.id} className="border-b border-white/10 hover:bg-slate-800/45 transition-colors">
                     <td className="px-4 py-3">
                       <input type="checkbox" checked={selectedIds.includes(capsule.id)} onChange={(e) => setSelectedIds(prev => e.target.checked ? [...prev, capsule.id] : prev.filter(v => v !== capsule.id))} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {capsule.coverImageUrl ? (
-                          <img src={capsule.coverImageUrl} alt="" className="h-8 w-8 rounded-lg object-cover" />
+                          <img
+                            src={normalizeAdminCoverUrl(capsule.coverImageUrl)}
+                            alt=""
+                            className="h-8 w-8 rounded-lg object-cover"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/static/tags/default.jpg" }}
+                          />
                         ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary">
-                            <Archive className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-700">
+                            <Archive className="h-4 w-4 text-slate-200" />
                           </div>
                         )}
-                        <p className="font-medium text-foreground truncate max-w-[200px]">{capsule.title}</p>
+                        <p className="font-medium text-slate-100 truncate max-w-[200px]">{capsule.title}</p>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -761,30 +954,30 @@ function AdminCapsulesTable() {
                         {capsule.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground capitalize">
+                    <td className="px-4 py-3 text-slate-300 capitalize">
                       {capsule.visibility}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                    <td className="px-4 py-3 text-slate-400 text-xs">
                       {capsule.unlockAt ? new Date(capsule.unlockAt).toLocaleDateString() : "—"}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {capsule.tags?.slice(0, 3).map(t => (
-                          <span key={t} className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">{t}</span>
+                          <span key={t} className="rounded-full border border-white/15 bg-slate-800/70 px-2 py-0.5 text-[10px] font-medium text-slate-100">{t}</span>
                         ))}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center gap-1">
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(capsule)}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-300 hover:bg-white/10 hover:text-slate-100" onClick={() => startEdit(capsule)}>
                           <Edit className="h-4 w-4" />
                         </Button>
                         {capsule.deletedAt ? (
-                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleRestore(capsule.id)}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-300 hover:bg-emerald-500/20 hover:text-emerald-100" onClick={() => handleRestore(capsule.id)}>
                             <RotateCcw className="h-4 w-4 text-emerald-500" />
                           </Button>
                         ) : (
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(capsule.id)}>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-red-300 hover:bg-red-500/20 hover:text-red-100" onClick={() => handleDelete(capsule.id)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         )}
@@ -800,11 +993,23 @@ function AdminCapsulesTable() {
 
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-center gap-2">
-          <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-slate-300 hover:bg-white/10 hover:text-slate-100"
+            disabled={page === 0}
+            onClick={() => setPage(p => p - 1)}
+          >
             <ChevronLeft className="h-4 w-4" /> Prev
           </Button>
-          <span className="text-sm text-muted-foreground">Page {page + 1} of {totalPages}</span>
-          <Button variant="ghost" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+          <span className="text-sm text-slate-400">Page {page + 1} of {totalPages}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-slate-300 hover:bg-white/10 hover:text-slate-100"
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage(p => p + 1)}
+          >
             Next <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -817,7 +1022,7 @@ function AdminCapsulesTable() {
           if (!open) setEditMediaReplacementFiles({})
         }}
       >
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto border-white/10 bg-[#111827] text-slate-100">
           <DialogHeader>
             <DialogTitle>Edit Capsule</DialogTitle>
             <DialogDescription>Update unlock date, cover image, attachments and metadata in one place.</DialogDescription>
@@ -826,15 +1031,15 @@ function AdminCapsulesTable() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label>Title</Label>
-              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+              <Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="border-white/15 bg-slate-900/45 text-slate-100" />
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Message</Label>
-              <Textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} className="min-h-[110px]" />
+              <Textarea value={editBody} onChange={(e) => setEditBody(e.target.value)} className="min-h-[110px] border-white/15 bg-slate-900/45 text-slate-100" />
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
-              <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
+              <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="h-10 w-full rounded-md border border-white/15 bg-slate-900/45 px-3 text-sm text-slate-100">
                 <option value="draft">draft</option>
                 <option value="sealed">sealed</option>
                 <option value="opened">opened</option>
@@ -842,7 +1047,7 @@ function AdminCapsulesTable() {
             </div>
             <div className="space-y-2">
               <Label>Visibility</Label>
-              <select value={editVisibility} onChange={(e) => setEditVisibility(e.target.value)} className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm">
+              <select value={editVisibility} onChange={(e) => setEditVisibility(e.target.value)} className="h-10 w-full rounded-md border border-white/15 bg-slate-900/45 px-3 text-sm text-slate-100">
                 <option value="private">private</option>
                 <option value="public">public</option>
                 <option value="shared">shared</option>
@@ -850,60 +1055,89 @@ function AdminCapsulesTable() {
             </div>
             <div className="space-y-2">
               <Label>Unlock At</Label>
-              <Input type="datetime-local" value={editUnlockAt} onChange={(e) => setEditUnlockAt(e.target.value)} />
+              <Input type="datetime-local" value={editUnlockAt} onChange={(e) => setEditUnlockAt(e.target.value)} className="border-white/15 bg-slate-900/45 text-slate-100 [color-scheme:dark]" />
             </div>
             <div className="space-y-2">
               <Label>Expires At</Label>
-              <Input type="datetime-local" value={editExpiresAt} onChange={(e) => setEditExpiresAt(e.target.value)} />
+              <Input type="datetime-local" value={editExpiresAt} onChange={(e) => setEditExpiresAt(e.target.value)} className="border-white/15 bg-slate-900/45 text-slate-100 [color-scheme:dark]" />
             </div>
             <div className="space-y-2">
               <Label>Owner ID</Label>
-              <Input value={editOwnerId} onChange={(e) => setEditOwnerId(e.target.value)} placeholder="Mongo user id" />
+              <Input value={editOwnerId} onChange={(e) => setEditOwnerId(e.target.value)} placeholder="Mongo user id" className="border-white/15 bg-slate-900/45 text-slate-100 placeholder:text-slate-500" />
+              {loadingOwnerProfile ? (
+                <p className="text-xs text-slate-400">Loading owner profile…</p>
+              ) : editOwnerProfile ? (
+                <div className="inline-flex items-center gap-2 rounded-lg border border-white/12 bg-slate-900/50 px-2.5 py-1.5">
+                  {editOwnerProfile.avatarUrl ? (
+                    <img
+                      src={editOwnerProfile.avatarUrl}
+                      alt={editOwnerProfile.username || "Owner"}
+                      className="h-7 w-7 rounded-full border border-white/15 object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-slate-800 text-[10px] font-semibold text-cyan-100">
+                      {(editOwnerProfile.username || editOwnerProfile.email || "U").slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-slate-100">
+                      {editOwnerProfile.username || editOwnerProfile.displayName || editOwnerProfile.email}
+                    </p>
+                  </div>
+                </div>
+              ) : editOwnerId.trim() ? (
+                <p className="text-xs text-amber-300">Owner profile was not found by this id.</p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Tags (comma separated)</Label>
-              <Input value={editTagsRaw} onChange={(e) => setEditTagsRaw(e.target.value)} placeholder="travel, memory" />
+              <Input value={editTagsRaw} onChange={(e) => setEditTagsRaw(e.target.value)} placeholder="travel, memory" className="border-white/15 bg-slate-900/45 text-slate-100 placeholder:text-slate-500" />
             </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="text-sm text-muted-foreground inline-flex items-center gap-2">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-300">
               <input type="checkbox" checked={editAllowComments} onChange={(e) => setEditAllowComments(e.target.checked)} /> allow comments
             </label>
-            <label className="text-sm text-muted-foreground inline-flex items-center gap-2">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-300">
               <input type="checkbox" checked={editAllowReactions} onChange={(e) => setEditAllowReactions(e.target.checked)} /> allow reactions
             </label>
           </div>
 
           <div className="space-y-2">
             <Label>Cover Image</Label>
-            <CoverUploader coverValue={editCoverValue} onCoverChange={setEditCoverValue} />
+            <CoverUploader coverValue={editCoverValue} onCoverChange={setEditCoverValue} theme="cosmic" />
           </div>
 
           <div className="space-y-2">
             <Label>Current Attachments</Label>
             {editMediaExisting.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No attachments</p>
+              <p className="text-xs text-slate-400">No attachments</p>
             ) : (
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                 {editMediaExisting.map((m) => (
-                  <div key={m.id} className="relative rounded-md border border-border bg-muted/40 p-2">
+                  <div key={m.id} className="relative rounded-md border border-white/15 bg-slate-900/75 p-2">
                     {m.type === "image" ? (
-                      <img src={m.url} alt="" className="mb-2 h-24 w-full rounded object-cover" />
+                      <img
+                        src={m.url}
+                        alt=""
+                        className="mb-2 h-24 w-full rounded object-cover"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/static/tags/default.jpg" }}
+                      />
                     ) : (
                       <video src={m.url} controls className="mb-2 h-24 w-full rounded object-cover" />
                     )}
-                    <p className="truncate text-xs">{m.type}: {m.url}</p>
+                    <p className="truncate text-xs text-slate-300">{m.type}: {m.url}</p>
                     <Input
                       type="file"
-                      accept="image/*,video/*"
-                      className="mt-2 h-8 text-xs"
+                      accept={MEDIA_ACCEPT_ATTR}
+                      className="mt-2 h-8 border-white/15 bg-slate-900/60 text-xs text-slate-200 file:mr-2 file:rounded file:border-0 file:bg-cyan-500/20 file:px-2 file:py-1 file:text-xs file:text-cyan-100"
                       onChange={(e) => setReplacementMediaFile(m.id, e.target.files?.[0] || null)}
                     />
                     {editMediaReplacementFiles[m.id] ? (
                       <p className="mt-1 text-[11px] text-primary">Will replace with: {editMediaReplacementFiles[m.id].name}</p>
                     ) : (
-                      <p className="mt-1 text-[11px] text-muted-foreground">Keep current file</p>
+                      <p className="mt-1 text-[11px] text-slate-500">Keep current file</p>
                     )}
                     <Button size="icon" variant="ghost" className="absolute right-1 top-1 h-6 w-6" onClick={() => removeExistingMedia(m.id)}>
                       <X className="h-3 w-3" />
@@ -916,8 +1150,10 @@ function AdminCapsulesTable() {
 
           <div className="space-y-2">
             <Label>Add New Attachments</Label>
-            <MediaUploader files={editMediaFiles} onFilesChange={setEditMediaFiles} />
+            <MediaUploader files={editMediaFiles} onFilesChange={setEditMediaFiles} theme="cosmic" />
           </div>
+
+          {editorError ? <p className="text-sm text-rose-300">{editorError}</p> : null}
 
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditorOpen(false)}>Cancel</Button>
@@ -1015,85 +1251,97 @@ function AdminTagsTable() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{tags.length} tags</p>
+        <p className="text-sm text-slate-400">{tags.length} tags</p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Input value={newName} onChange={(e) => setNewName(e.target.value)} className="h-9 w-[200px]" placeholder="New tag name" />
-        <Input type="file" accept="image/*" className="h-9 w-[260px]" onChange={(e) => setNewImageFile(e.target.files?.[0] || null)} />
-        <Button size="sm" onClick={createNewTag}>Add tag</Button>
-        <Button size="sm" variant="destructive" disabled={selectedIds.length === 0} onClick={applyBulkDelete}>Delete selected ({selectedIds.length})</Button>
+        <Input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          className="h-9 w-[200px] border-white/15 bg-[#111827] text-slate-100 placeholder:text-slate-500"
+          placeholder="New tag name"
+        />
+        <Input
+          type="file"
+          accept={IMAGE_ACCEPT_ATTR}
+          className="h-9 w-[260px] border-white/15 bg-[#111827] text-slate-200 file:mr-2 file:rounded file:border-0 file:bg-cyan-500/20 file:px-2 file:py-1 file:text-xs file:text-cyan-100"
+          onChange={(e) => setNewImageFile(e.target.files?.[0] || null)}
+        />
+        <Button size="sm" className="border border-cyan-300/25 bg-cyan-500/20 text-cyan-50 hover:bg-cyan-500/35" onClick={createNewTag}>Add tag</Button>
+        <Button size="sm" className="border border-rose-300/25 bg-rose-500/20 text-rose-100 hover:bg-rose-500/35" disabled={selectedIds.length === 0} onClick={applyBulkDelete}>Delete selected ({selectedIds.length})</Button>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="rounded-xl border border-white/10 bg-slate-900/35 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+              <tr className="border-b border-white/10 bg-slate-900/65">
+                <th className="px-4 py-3 text-left font-medium text-slate-400">
                   <input
                     type="checkbox"
                     checked={tags.length > 0 && selectedIds.length === tags.length}
                     onChange={(e) => setSelectedIds(e.target.checked ? tags.map((t) => t.id) : [])}
                   />
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tag</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Tag</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Type</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Created</th>
+                <th className="px-4 py-3 text-right font-medium text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="border-b border-border">
-                    <td colSpan={5} className="px-4 py-3"><Skeleton className="h-5 w-full" /></td>
+                  <tr key={i} className="border-b border-white/10">
+                    <td colSpan={5} className="px-4 py-3"><Skeleton className="h-5 w-full bg-white/10" /></td>
                   </tr>
                 ))
               ) : tags.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No tags found</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">No tags found</td></tr>
               ) : (
-                tags.map(tag => (
-                  <tr key={tag.id} className="border-b border-border hover:bg-muted/30 transition-colors">
+                tags.map(tag => {
+                  const tagImageUrl = resolveTagImageUrl(tag.imageUrl, !!tag.isSystem)
+                  return (
+                  <tr key={tag.id} className="border-b border-white/10 transition-colors hover:bg-slate-800/45">
                     <td className="px-4 py-3">
                       <input type="checkbox" checked={selectedIds.includes(tag.id)} onChange={(e) => setSelectedIds(prev => e.target.checked ? [...prev, tag.id] : prev.filter(v => v !== tag.id))} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        {tag.imageUrl ? (
-                          <img src={tag.imageUrl} alt={tag.name} className="h-8 w-8 rounded-lg object-cover" />
+                        {tagImageUrl ? (
+                          <img src={tagImageUrl} alt={tag.name} className="h-8 w-8 rounded-lg object-cover" />
                         ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary">
-                            <Tag className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800">
+                            <Tag className="h-4 w-4 text-slate-400" />
                           </div>
                         )}
-                        <p className="font-medium text-foreground">{tag.name}</p>
+                        <p className="font-medium text-slate-100">{tag.name}</p>
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                         tag.isSystem
-                          ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                          : "bg-secondary text-secondary-foreground"
+                          ? "border border-cyan-300/35 bg-cyan-500/15 text-cyan-100"
+                          : "border border-slate-300/30 bg-slate-500/18 text-slate-200"
                       }`}>
                         {tag.isSystem ? "System" : "Custom"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                    <td className="px-4 py-3 text-xs text-slate-400">
                       {tag.createdAt ? new Date(tag.createdAt).toLocaleDateString() : "—"}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center gap-1">
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(tag)}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-300 hover:bg-white/10 hover:text-slate-100" onClick={() => startEdit(tag)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(tag.id)}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-300 hover:bg-rose-500/20 hover:text-rose-100" onClick={() => handleDelete(tag.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </td>
                   </tr>
-                ))
+                )})
               )}
             </tbody>
           </table>
@@ -1101,7 +1349,7 @@ function AdminTagsTable() {
       </div>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent>
+        <DialogContent className="border-white/10 bg-[#111827] text-slate-100">
           <DialogHeader>
             <DialogTitle>Edit Tag</DialogTitle>
             <DialogDescription>Use image upload instead of manual URL editing.</DialogDescription>
@@ -1109,20 +1357,25 @@ function AdminTagsTable() {
 
           <div className="space-y-2">
             <Label>Name</Label>
-            <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+            <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="border-white/15 bg-slate-900/45 text-slate-100" />
           </div>
           <div className="space-y-2">
             <Label>Current Image</Label>
-            {editImageUrl ? <img src={editImageUrl} alt="tag" className="h-20 w-20 rounded-lg object-cover" /> : <p className="text-xs text-muted-foreground">No image</p>}
+            {editImageUrl ? <img src={editImageUrl} alt="tag" className="h-20 w-20 rounded-lg object-cover" /> : <p className="text-xs text-slate-400">No image</p>}
           </div>
           <div className="space-y-2">
             <Label>New Image</Label>
-            <Input type="file" accept="image/*" onChange={(e) => setEditImageFile(e.target.files?.[0] || null)} />
+            <Input
+              type="file"
+              accept={IMAGE_ACCEPT_ATTR}
+              className="border-white/15 bg-slate-900/45 text-slate-200 file:mr-2 file:rounded file:border-0 file:bg-cyan-500/20 file:px-2 file:py-1 file:text-xs file:text-cyan-100"
+              onChange={(e) => setEditImageFile(e.target.files?.[0] || null)}
+            />
           </div>
 
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditorOpen(false)}>Cancel</Button>
-            <Button onClick={() => editingId && saveEdit(editingId)}>Save tag</Button>
+            <Button variant="ghost" className="text-slate-300 hover:bg-white/10 hover:text-slate-100" onClick={() => setEditorOpen(false)}>Cancel</Button>
+            <Button className="border border-cyan-300/25 bg-cyan-500/20 text-cyan-50 hover:bg-cyan-500/35" onClick={() => editingId && saveEdit(editingId)}>Save tag</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1326,41 +1579,46 @@ function AdminDataTable() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <select value={collection} onChange={(e) => setCollection(e.target.value)} className="h-10 rounded-md border border-border bg-background px-3 text-sm">
+        <select value={collection} onChange={(e) => setCollection(e.target.value)} className="h-10 rounded-md border border-white/15 bg-[#111827] px-3 text-sm text-slate-100">
           {collections.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <div className="relative min-w-[260px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0) }} className="pl-10" placeholder="Search JSON fields..." />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0) }}
+            className="border-white/15 bg-[#111827] pl-10 text-slate-100 placeholder:text-slate-500"
+            placeholder="Search JSON fields..."
+          />
         </div>
-        <p className="text-sm text-muted-foreground">{total} docs</p>
+        <p className="text-sm text-slate-400">{total} docs</p>
       </div>
 
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="rounded-xl border border-white/10 bg-slate-900/35 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">_id</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Document</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+              <tr className="border-b border-white/10 bg-slate-900/65">
+                <th className="px-4 py-3 text-left font-medium text-slate-400">_id</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-400">Document</th>
+                <th className="px-4 py-3 text-right font-medium text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={3} className="px-4 py-6"><Skeleton className="h-5 w-full" /></td></tr>
+                <tr><td colSpan={3} className="px-4 py-6"><Skeleton className="h-5 w-full bg-white/10" /></td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">No documents found</td></tr>
+                <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400">No documents found</td></tr>
               ) : rows.map((row, rowIndex) => (
-                <tr key={`${idToString(row)}::${rowIndex}`} className="border-b border-border align-top">
-                  <td className="px-4 py-3 font-mono text-xs">{idToString(row)}</td>
+                <tr key={`${idToString(row)}::${rowIndex}`} className="border-b border-white/10 align-top hover:bg-slate-800/45">
+                  <td className="px-4 py-3 font-mono text-xs text-slate-300">{idToString(row)}</td>
                   <td className="px-4 py-3">
-                    <pre className="max-h-[220px] overflow-auto rounded-md bg-muted/40 p-2 text-xs">{JSON.stringify(row, null, 2)}</pre>
+                    <pre className="max-h-[220px] overflow-auto rounded-md border border-white/10 bg-slate-900/75 p-2 text-xs text-slate-200">{JSON.stringify(row, null, 2)}</pre>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => beginEdit(row)}><Edit className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => removeDoc(row)}><Trash2 className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-300 hover:bg-white/10 hover:text-slate-100" onClick={() => beginEdit(row)}><Edit className="h-4 w-4" /></Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-300 hover:bg-rose-500/20 hover:text-rose-100" onClick={() => removeDoc(row)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   </td>
                 </tr>
@@ -1372,9 +1630,9 @@ function AdminDataTable() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
-          <Button variant="ghost" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}><ChevronLeft className="h-4 w-4" /> Prev</Button>
-          <span className="text-sm text-muted-foreground">Page {page + 1} of {totalPages}</span>
-          <Button variant="ghost" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next <ChevronRight className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="sm" className="text-slate-300 hover:bg-white/10 hover:text-slate-100" disabled={page === 0} onClick={() => setPage((p) => p - 1)}><ChevronLeft className="h-4 w-4" /> Prev</Button>
+          <span className="text-sm text-slate-400">Page {page + 1} of {totalPages}</span>
+          <Button variant="ghost" size="sm" className="text-slate-300 hover:bg-white/10 hover:text-slate-100" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Next <ChevronRight className="h-4 w-4" /></Button>
         </div>
       )}
 
@@ -1388,7 +1646,7 @@ function AdminDataTable() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl border-white/10 bg-[#111827] text-slate-100">
           <DialogHeader>
             <DialogTitle>Edit Document</DialogTitle>
             <DialogDescription>
@@ -1402,16 +1660,16 @@ function AdminDataTable() {
             <Textarea
               value={editJson}
               onChange={(e) => setEditJson(e.target.value)}
-              className="min-h-[420px] font-mono text-xs"
+              className="min-h-[420px] border-white/15 bg-slate-900/60 font-mono text-xs text-slate-100"
             />
-            <p className="text-xs text-muted-foreground">Keep valid JSON format. Full document update will be applied.</p>
+            <p className="text-xs text-slate-400">Keep valid JSON format. Full document update will be applied.</p>
           </div>
 
           {editorError && <p className="text-sm text-destructive">{editorError}</p>}
 
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditorOpen(false)}>Cancel</Button>
-            <Button onClick={saveEdit} disabled={savingEditor || !editingId || !collection}>
+            <Button variant="ghost" className="text-slate-300 hover:bg-white/10 hover:text-slate-100" onClick={() => setEditorOpen(false)}>Cancel</Button>
+            <Button className="border border-cyan-300/25 bg-cyan-500/20 text-cyan-50 hover:bg-cyan-500/35" onClick={saveEdit} disabled={savingEditor || !editingId || !collection}>
               {savingEditor ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>) : "Save document"}
             </Button>
           </DialogFooter>
@@ -1420,4 +1678,3 @@ function AdminDataTable() {
     </div>
   )
 }
-

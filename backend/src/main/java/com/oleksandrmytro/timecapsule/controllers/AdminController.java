@@ -3,8 +3,12 @@ package com.oleksandrmytro.timecapsule.controllers;
 import com.oleksandrmytro.timecapsule.models.Capsule;
 import com.oleksandrmytro.timecapsule.models.Tag;
 import com.oleksandrmytro.timecapsule.models.User;
+import com.oleksandrmytro.timecapsule.responses.LoginResponse;
 import com.oleksandrmytro.timecapsule.services.AdminService;
+import com.oleksandrmytro.timecapsule.services.AuthenticationService;
 import com.oleksandrmytro.timecapsule.services.TagService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.bson.Document;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
@@ -21,10 +26,12 @@ public class AdminController {
 
     private final AdminService adminService;
     private final TagService tagService;
+    private final AuthenticationService authenticationService;
 
-    public AdminController(AdminService adminService, TagService tagService) {
+    public AdminController(AdminService adminService, TagService tagService, AuthenticationService authenticationService) {
         this.adminService = adminService;
         this.tagService = tagService;
+        this.authenticationService = authenticationService;
     }
 
     /* ── Stats ─────────────────────────── */
@@ -42,13 +49,22 @@ public class AdminController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
             @RequestParam(defaultValue = "false") boolean onlyBlocked,
+            @RequestParam(defaultValue = "all") String role,
+            @RequestParam(defaultValue = "all") String status,
             Authentication auth) {
         requireAdmin(auth);
-        List<User> users = adminService.listUsers(q, page, size, includeDeleted, onlyBlocked);
-        long total = adminService.countUsers(q, includeDeleted, onlyBlocked);
+        List<User> users = adminService.listUsers(q, page, size, includeDeleted, onlyBlocked, role, status);
+        long total = adminService.countUsers(q, includeDeleted, onlyBlocked, role, status);
         // Map users to safe representation (without password)
         var mapped = users.stream().map(this::mapUser).toList();
         return ResponseEntity.ok(Map.of("items", mapped, "total", total, "page", page, "size", size));
+    }
+
+    @PostMapping("/users")
+    public ResponseEntity<Map<String, Object>> createUser(@RequestBody Map<String, Object> payload, Authentication auth) {
+        User actor = requireAdmin(auth);
+        User created = adminService.createUser(payload, actor);
+        return ResponseEntity.status(HttpStatus.CREATED).body(mapUser(created));
     }
 
     @PatchMapping("/users/{id}")
@@ -70,6 +86,24 @@ public class AdminController {
         User actor = requireAdmin(auth);
         User updated = adminService.restoreUser(id, actor);
         return ResponseEntity.ok(mapUser(updated));
+    }
+
+    @PostMapping("/users/{id}/password/temporary")
+    public ResponseEntity<Map<String, Object>> sendTemporaryPassword(@PathVariable String id, Authentication auth) {
+        User actor = requireAdmin(auth);
+        adminService.issueTemporaryPassword(id, actor);
+        return ResponseEntity.ok(Map.of("message", "Temporary password sent by email"));
+    }
+
+    @PostMapping("/users/{id}/impersonate")
+    public ResponseEntity<LoginResponse> impersonateUser(@PathVariable String id,
+                                                         Authentication auth,
+                                                         HttpServletRequest request,
+                                                         HttpServletResponse response) {
+        User actor = requireAdmin(auth);
+        LoginResponse tokens = authenticationService.impersonateAsUser(actor, id);
+        writeAuthCookies(request, response, tokens);
+        return ResponseEntity.ok(tokens);
     }
 
     @PostMapping("/users/bulk")
@@ -241,6 +275,7 @@ public class AdminController {
             Map.entry("enabled", u.isEnabled()),
             Map.entry("status", userStatus(u)),
             Map.entry("isOnline", u.isOnline()),
+            Map.entry("mustChangePassword", u.isMustChangePassword()),
             Map.entry("avatarUrl", u.getAvatarUrl() != null ? u.getAvatarUrl() : ""),
             Map.entry("createdAt", u.getCreatedAt() != null ? u.getCreatedAt().toString() : ""),
             Map.entry("blockedUntil", u.getBlockedUntil() != null ? u.getBlockedUntil().toString() : ""),
@@ -273,6 +308,44 @@ public class AdminController {
         if (user.getDeletedAt() != null) return "deleted";
         if (user.getBlockedUntil() != null && user.getBlockedUntil().isAfter(java.time.LocalDateTime.now())) return "blocked";
         return user.isEnabled() ? "active" : "disabled";
+    }
+
+    private void writeAuthCookies(HttpServletRequest request, HttpServletResponse response, LoginResponse tokens) {
+        response.addHeader("Set-Cookie", buildCookie(request, "accessToken", tokens.getAccessToken(), (int) (tokens.getExpiresIn() / 1000)));
+        response.addHeader("Set-Cookie", buildCookie(request, "refreshToken", tokens.getRefreshToken(), (int) (tokens.getRefreshExpiresIn() / 1000)));
+    }
+
+    private String buildCookie(HttpServletRequest request, String name, String value, int maxAgeSeconds) {
+        boolean secure = request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"));
+        String sameSite = resolveSameSite(request, secure);
+        return name + "=" + value + "; HttpOnly; SameSite=" + sameSite + "; Path=/; Max-Age=" + maxAgeSeconds + (secure ? "; Secure" : "");
+    }
+
+    private String resolveSameSite(HttpServletRequest request, boolean secure) {
+        if (secure && isCrossSiteRequest(request)) {
+            return "None";
+        }
+        return "Lax";
+    }
+
+    private boolean isCrossSiteRequest(HttpServletRequest request) {
+        String fetchSite = request.getHeader("Sec-Fetch-Site");
+        if ("cross-site".equalsIgnoreCase(fetchSite)) {
+            return true;
+        }
+
+        String origin = request.getHeader("Origin");
+        if (origin == null || origin.isBlank()) {
+            return false;
+        }
+
+        try {
+            URI uri = URI.create(origin);
+            String originHost = uri.getHost();
+            return originHost != null && !originHost.equalsIgnoreCase(request.getServerName());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 }
 

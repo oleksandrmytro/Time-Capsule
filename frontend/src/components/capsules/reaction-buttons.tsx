@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Heart, Sparkles, Bookmark, Loader2 } from "lucide-react"
+import { Bookmark, Heart, Loader2, Sparkles, ThumbsUp, type LucideIcon } from "lucide-react"
 import { getReactionSummary, toggleReaction, type ReactionSummary } from "@/services/api"
 
 interface ReactionButtonsProps {
@@ -14,44 +14,44 @@ const REACTION_CONFIG: Record<
   ReactionType,
   {
     label: string
-    getIcon: () => React.ReactNode
-    bgColor: string
-    activeBgColor: string
-    textColor: string
-    activeTextColor: string
+    Icon: LucideIcon
+    tone: string
+    activeTone: string
+    textTone: string
+    glow: string
   }
 > = {
   like: {
     label: "Like",
-    getIcon: () => <Heart className="h-4 w-4 sm:h-5 sm:w-5" />,
-    bgColor: "hover:bg-red-50 dark:hover:bg-red-950/20",
-    activeBgColor: "bg-red-50 dark:bg-red-950/30",
-    textColor: "text-red-600 dark:text-red-400",
-    activeTextColor: "text-red-600 dark:text-red-400",
+    Icon: ThumbsUp,
+    tone: "border-cyan-300/45 bg-cyan-400/20 hover:bg-cyan-400/30",
+    activeTone: "border-cyan-200/80 bg-cyan-300/38",
+    textTone: "text-cyan-50",
+    glow: "shadow-[0_0_28px_rgba(94,230,255,0.34)]",
   },
   love: {
     label: "Love",
-    getIcon: () => <Heart className="h-4 w-4 sm:h-5 sm:w-5" />,
-    bgColor: "hover:bg-pink-50 dark:hover:bg-pink-950/20",
-    activeBgColor: "bg-pink-50 dark:bg-pink-950/30",
-    textColor: "text-pink-600 dark:text-pink-400",
-    activeTextColor: "text-pink-600 dark:text-pink-400",
+    Icon: Heart,
+    tone: "border-violet-300/45 bg-violet-400/20 hover:bg-violet-400/30",
+    activeTone: "border-violet-200/80 bg-violet-400/38",
+    textTone: "text-violet-50",
+    glow: "shadow-[0_0_28px_rgba(124,92,255,0.34)]",
   },
   wow: {
     label: "Wow",
-    getIcon: () => <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />,
-    bgColor: "hover:bg-amber-50 dark:hover:bg-amber-950/20",
-    activeBgColor: "bg-amber-50 dark:bg-amber-950/30",
-    textColor: "text-amber-600 dark:text-amber-400",
-    activeTextColor: "text-amber-600 dark:text-amber-400",
+    Icon: Sparkles,
+    tone: "border-amber-300/45 bg-amber-300/20 hover:bg-amber-300/30",
+    activeTone: "border-amber-200/80 bg-amber-300/40",
+    textTone: "text-amber-50",
+    glow: "shadow-[0_0_28px_rgba(251,191,36,0.32)]",
   },
   bookmark: {
     label: "Bookmark",
-    getIcon: () => <Bookmark className="h-4 w-4 sm:h-5 sm:w-5" />,
-    bgColor: "hover:bg-blue-50 dark:hover:bg-blue-950/20",
-    activeBgColor: "bg-blue-50 dark:bg-blue-950/30",
-    textColor: "text-blue-600 dark:text-blue-400",
-    activeTextColor: "text-blue-600 dark:text-blue-400",
+    Icon: Bookmark,
+    tone: "border-emerald-300/45 bg-emerald-400/20 hover:bg-emerald-400/30",
+    activeTone: "border-emerald-200/80 bg-emerald-400/38",
+    textTone: "text-emerald-50",
+    glow: "shadow-[0_0_28px_rgba(16,185,129,0.3)]",
   },
 }
 
@@ -59,8 +59,8 @@ const REACTION_TYPES: ReactionType[] = ["like", "love", "wow", "bookmark"]
 
 export function ReactionButtons({ capsuleId, isAuthenticated }: ReactionButtonsProps) {
   const [summary, setSummary] = useState<ReactionSummary>({ counts: {}, userReactions: [] })
-  const [loadingType, setLoadingType] = useState<string | null>(null)
-  const [animatingType, setAnimatingType] = useState<string | null>(null)
+  const [loadingType, setLoadingType] = useState<ReactionType | null>(null)
+  const [animatingType, setAnimatingType] = useState<ReactionType | null>(null)
 
   useEffect(() => {
     getReactionSummary(capsuleId).then(setSummary).catch(() => {})
@@ -73,33 +73,37 @@ export function ReactionButtons({ capsuleId, isAuthenticated }: ReactionButtonsP
     try {
       const updated = await toggleReaction(capsuleId, type)
       setSummary(updated)
-    } catch {}
-    setLoadingType(null)
-    setTimeout(() => setAnimatingType(null), 300)
+    } catch {
+      // ignore
+    } finally {
+      setLoadingType(null)
+      setTimeout(() => setAnimatingType(null), 260)
+    }
   }
 
-  const totalReactions = Object.values(summary.counts || {}).reduce((a, b) => a + b, 0)
-  const userReaction = summary.userReactions?.[0] || null
+  const totalReactions = Object.values(summary.counts || {}).reduce((acc, value) => acc + value, 0)
+  const userReactions = new Set(summary.userReactions || [])
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card/50 p-4 sm:p-5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-card-foreground">React to this capsule</h3>
-        {totalReactions > 0 && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/10 text-xs font-medium text-accent">
-            <span className="text-sm">{totalReactions}</span>
-            <span className="text-xs">reaction{totalReactions !== 1 ? "s" : ""}</span>
-          </div>
-        )}
+    <section className="rounded-2xl border border-white/12 bg-slate-900/48 p-4 backdrop-blur-xl sm:p-5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-serif text-lg font-semibold text-slate-100">Reactions</h3>
+          <p className="text-xs text-slate-400">Pick one reaction for this capsule.</p>
+        </div>
+        <span className="rounded-full border border-white/12 bg-white/[0.05] px-3 py-1 text-xs font-medium text-slate-200">
+          {totalReactions} reaction{totalReactions === 1 ? "" : "s"}
+        </span>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         {REACTION_TYPES.map((type) => {
           const config = REACTION_CONFIG[type]
           const count = summary.counts?.[type] || 0
-          const active = userReaction === type
+          const active = userReactions.has(type)
           const loading = loadingType === type
           const isAnimating = animatingType === type
+          const Icon = config.Icon
 
           return (
             <Button
@@ -108,32 +112,26 @@ export function ReactionButtons({ capsuleId, isAuthenticated }: ReactionButtonsP
               variant="ghost"
               onClick={() => handleToggle(type)}
               disabled={!!loadingType || !isAuthenticated}
-              className={`
-                relative h-auto flex-col gap-1.5 px-3 py-2.5 sm:py-3 transition-all duration-200
-                ${active ? config.activeBgColor : config.bgColor}
-                ${active ? "border border-current" : ""}
-                hover:scale-105
-                ${isAnimating ? "scale-110" : "scale-100"}
-                ${!isAuthenticated ? "cursor-default opacity-70" : ""}
-              `}
-              title={isAuthenticated ? `${config.label} this capsule` : "Увійдіть, щоб залишити реакцію"}
+              className={`relative h-auto min-h-[80px] flex-col gap-1.5 rounded-xl border px-3 py-3 transition-all duration-200 ${
+                active ? `${config.activeTone} ${config.glow}` : config.tone
+              } ${isAnimating ? "scale-[1.04]" : "scale-100"} ${
+                !isAuthenticated ? "cursor-default opacity-70" : "hover:-translate-y-0.5"
+              }`}
+              title={isAuthenticated ? `${config.label} this capsule` : "Sign in to react"}
             >
-              <div className={`transition-all ${active ? config.activeTextColor : config.textColor}`}>
-                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : config.getIcon()}
-              </div>
-              <div className="flex flex-col items-center gap-0.5">
-                <span className={`text-xs font-medium ${config.textColor}`}>{config.label}</span>
-                {count > 0 && <span className={`text-xs font-bold ${config.activeTextColor}`}>{count}</span>}
-              </div>
-              {active && <div className="absolute inset-0 rounded-lg pointer-events-none animate-pulse opacity-20" />}
+              <span className={config.textTone}>
+                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Icon className="h-5 w-5" />}
+              </span>
+              <span className={`text-xs font-semibold ${config.textTone}`}>{config.label}</span>
+              <span className={`text-xs font-semibold ${active ? config.textTone : "text-slate-100/90"}`}>{count}</span>
             </Button>
           )
         })}
       </div>
 
-      {totalReactions === 0 && (
-        <p className="text-center text-xs text-muted-foreground">Be the first to react to this capsule</p>
+      {!isAuthenticated && (
+        <p className="mt-3 text-xs text-slate-400">Sign in to leave a reaction.</p>
       )}
-    </div>
+    </section>
   )
 }

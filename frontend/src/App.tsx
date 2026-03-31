@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Routes, Route, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom'
-import './App.css'
 import Header from './components/Header'
 import { Footer } from './components/footer'
 import { HeroSection } from './components/landing/hero-section'
 import { HowItWorks } from './components/landing/how-it-works'
 import { CtaSection } from './components/landing/cta-section'
+import { CosmicLandingConcept } from './components/landing/cosmic-landing-concept'
 import { LoginForm } from './components/auth/login-form'
 import { RegisterForm } from './components/auth/register-form'
 import { VerifyForm } from './components/auth/verify-form'
@@ -22,11 +22,22 @@ import { CapsulesMapView } from './components/capsules/capsules-map-view'
 import { AdminPanel } from './components/admin/admin-panel'
 import {
   apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser, getUserProfile, getFollowing, getFollowers, getUserCapsules, followUser, unfollowUser,
+  stopImpersonation as stopImpersonationApi,
   type UserProfile, type Capsule, type ApiError, type CreateCapsulePayload, type UserPublic,
 } from './services/api'
 import { connectCapsuleStream, disconnectCapsuleStream } from './services/ws'
 import { EmptyState } from './components/empty-state'
-import { ShieldOff } from 'lucide-react'
+import { Loader2, MessageCircle, PenSquare, ShieldOff, Sparkles } from 'lucide-react'
+import { SpaceBackgroundFrame } from './components/space-background-frame'
+
+const OBJECT_ID_RE = /^[a-fA-F0-9]{24}$/
+const safeDecodeSegment = (value: string) => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
 
 function App() {
   const [form, setForm] = useState({ username: '', email: '', password: '', verificationCode: '' })
@@ -37,12 +48,62 @@ function App() {
   const [capsulesLoading, setCapsulesLoading] = useState(false)
   const [selectedCapsule, setSelectedCapsule] = useState<Capsule | null>(null)
   const [following, setFollowing] = useState<UserPublic[]>([])
-  const [loadingCapsule, setLoadingCapsule] = useState(false)
+  const [sessionResolved, setSessionResolved] = useState(false)
+  const [footerHeight, setFooterHeight] = useState(52)
+  const [stoppingImpersonation, setStoppingImpersonation] = useState(false)
 
   const navigate = useNavigate()
   const location = useLocation()
+  const isCosmicConceptRoute = location.pathname.startsWith('/landing-concept')
+  const isOauthRedirectRoute = location.pathname === '/auth/oauth2/redirect'
+  const isChatRoute = location.pathname === '/chat' || location.pathname.startsWith('/chat/')
+  const isCreateRoute = location.pathname === '/create'
+  const isCalendarRoute = location.pathname === '/calendar'
+  const isCapsulesRoute = location.pathname === '/capsules' || location.pathname.startsWith('/capsules/')
+  const isMapRoute = location.pathname === '/map'
+  const isSearchRoute = location.pathname === '/search'
+  const isAccountRoute = location.pathname.startsWith('/account')
+  const isPublicProfileRoute = location.pathname.startsWith('/profile/')
+  const isAdminRoute = location.pathname.startsWith('/admin')
+  const isAuthRoute =
+    location.pathname === '/login'
+    || location.pathname === '/register'
+    || location.pathname === '/verify'
+    || isOauthRedirectRoute
 
   const isAuthenticated = Boolean(tokens && profile)
+  const isLandingRoute = location.pathname === '/'
+  const hasFixedTopShell =
+    isLandingRoute ||
+    isChatRoute ||
+    isCreateRoute ||
+    isCalendarRoute ||
+    isCapsulesRoute ||
+    isMapRoute ||
+    isSearchRoute ||
+    isAccountRoute ||
+    isPublicProfileRoute ||
+    isAdminRoute
+  const hasCosmicShell =
+    isLandingRoute ||
+    isChatRoute ||
+    isCreateRoute ||
+    isCalendarRoute ||
+    isCapsulesRoute ||
+    isMapRoute ||
+    isSearchRoute ||
+    isAccountRoute ||
+    isPublicProfileRoute ||
+    isAdminRoute
+  const showFooter =
+    !isCosmicConceptRoute &&
+    !isOauthRedirectRoute &&
+    !isAuthRoute &&
+    !isAdminRoute
+  const showImpersonationBanner = Boolean(isAuthenticated && profile?.impersonating)
+  const shellOffset = showFooter ? 'calc(4rem + var(--tc-footer-height, 0px))' : '4rem'
+  const topShellPaddingClass = hasFixedTopShell ? (showImpersonationBanner ? 'pt-[6.75rem]' : 'pt-16') : ''
+  const showAuthenticatedLandingLayout = isAuthenticated || !sessionResolved
   const isAdmin = (profile?.role || '').toLowerCase() === 'admin' || (profile?.role || '').toUpperCase() === 'ROLE_ADMIN'
   // data: any - Функція приймає будь-який тип даних, бо API може повернути що завгодно
   // : data is UserProfile - Це спеціальний TypeScript синтаксис.
@@ -88,8 +149,28 @@ function App() {
   // Але якщо поточний маршрут не такий то викликається bootstrapSession(), щоб перевірити чи є активна сесія користувача та встановити її.
   useEffect(() => {
     if (location.pathname === '/auth/oauth2/redirect') return
-    bootstrapSession().catch(() => { setTokens(null); setProfile(null) })
+    bootstrapSession()
+      .catch(() => { setTokens(null); setProfile(null) })
+      .finally(() => setSessionResolved(true))
   }, [])
+
+  useEffect(() => {
+    const previousBodyBackground = document.body.style.background
+    const previousHtmlBackground = document.documentElement.style.background
+    if (hasCosmicShell) {
+      document.body.style.background = '#030816'
+      document.documentElement.style.background = '#030816'
+    }
+    return () => {
+      document.body.style.background = previousBodyBackground
+      document.documentElement.style.background = previousHtmlBackground
+    }
+  }, [hasCosmicShell])
+
+  useEffect(() => {
+    if (showFooter) return
+    setFooterHeight(0)
+  }, [showFooter])
 
   // Виконується на маршруті /auth/oauth2/redirect
   // Обробляє повернення користувача з OAuth провайдера.
@@ -101,12 +182,13 @@ function App() {
     const err = params.get('error')
     if (err) {
       setError({ status: 0, message: decodeURIComponent(err) })
+      setSessionResolved(true)
       navigate('/login', { replace: true })
       return
     }
     establishSessionWithRetry()
-      .then(() => { setError(null); navigate('/', { replace: true }) })
-      .catch(() => { setError({ status: 0, message: 'OAuth login failed' }); navigate('/login', { replace: true }) })
+      .then(() => { setError(null); setSessionResolved(true); navigate('/', { replace: true }) })
+      .catch(() => { setError({ status: 0, message: 'OAuth login failed' }); setSessionResolved(true); navigate('/login', { replace: true }) })
   }, [])
 
   // --- Navigation helpers ---
@@ -138,6 +220,10 @@ function App() {
     setError(null)
     await apiRequest('/api/auth/login', { body: { email: form.email, password: form.password } })
     const me = await establishSession()
+    if (me.mustChangePassword && !me.impersonating) {
+      navigate('/account/settings?passwordRequired=1')
+      return
+    }
     const role = (me.role || '').toLowerCase()
     navigate(role === 'admin' || role === 'role_admin' ? '/admin' : '/')
   }
@@ -161,14 +247,19 @@ function App() {
     navigate('/')
   }
 
-  // --- Profile ---
-  const loadProfile = async () => {
-    if (!tokens) { setProfile(null); return }
+  const stopImpersonation = async () => {
+    setStoppingImpersonation(true)
+    setError(null)
     try {
-      const data = await getCurrentUser()
-      if (!isValidProfile(data)) throw { status: 401 }
-      setProfile(data)
-    } catch { setTokens(null); setProfile(null); navigate('/login') }
+      await stopImpersonationApi()
+      const me = await establishSession()
+      const role = (me.role || '').toLowerCase()
+      navigate(role === 'admin' || role === 'role_admin' ? '/admin' : '/')
+    } catch (err: any) {
+      setError(err)
+    } finally {
+      setStoppingImpersonation(false)
+    }
   }
 
   const updateProfile = async () => {
@@ -193,11 +284,16 @@ function App() {
   }
 
   const viewCapsule = async (id: string) => {
+    const normalizedId = safeDecodeSegment(String(id || "")).trim()
+    if (!OBJECT_ID_RE.test(normalizedId)) {
+      setError({ status: 400, message: 'Invalid capsule id' })
+      return
+    }
     setError(null)
     try {
-      const data = await getCapsule(id)
+      const data = await getCapsule(normalizedId)
       setSelectedCapsule(data)
-      navigate(`/capsules/${id}`, { state: { from: location.pathname } })
+      navigate(`/capsules/${normalizedId}`, { state: { from: location.pathname } })
     } catch (err: any) { setError(err) }
   }
 
@@ -209,18 +305,6 @@ function App() {
       await loadCapsules()
     } catch (err: any) { setError(err) }
   }
-
-  // --- Load capsule detail on direct navigation/refresh ---
-  useEffect(() => {
-    const match = location.pathname.match(/^\/capsules\/(.+)$/)
-    const capsuleId = match?.[1]
-    if (!capsuleId) return
-    if (selectedCapsule?.id === capsuleId) return
-    setError(null)
-    getCapsule(capsuleId)
-      .then((data) => setSelectedCapsule(data))
-      .catch((err: any) => setError(err))
-  }, [location.pathname, selectedCapsule?.id])
 
   // --- WebSocket ---
   // Зберігаємо selectedCapsule у ref щоб мати доступ до актуального значення
@@ -285,35 +369,92 @@ function App() {
     }
   }, [selectedCapsule?.id, isAuthenticated, profile?.id])
 
+  useEffect(() => {
+    if (!isAuthenticated || !profile?.mustChangePassword) return
+    if (profile?.impersonating) return
+    const role = (profile?.role || '').toLowerCase()
+    if (role === 'admin' || role === 'role_admin') return
+    if (location.pathname === '/account/settings') return
+    navigate('/account/settings?passwordRequired=1', { replace: true })
+  }, [isAuthenticated, profile?.mustChangePassword, profile?.impersonating, profile?.role, location.pathname, navigate])
+
   // Direct navigation to /capsules/:id — fetch capsule and surface access errors
   useEffect(() => {
     if (!location.pathname.startsWith('/capsules/')) return
-    const [, , id] = location.pathname.split('/')
-    if (!id || selectedCapsule?.id === id || loadingCapsule) return
-    setLoadingCapsule(true)
+    const [, , rawId] = location.pathname.split('/')
+    const id = safeDecodeSegment(rawId || '').trim()
+    if (!id) return
+    if (!OBJECT_ID_RE.test(id)) {
+      setSelectedCapsule(null)
+      setError({ status: 400, message: 'Invalid capsule id' })
+      return
+    }
+    if (selectedCapsule?.id === id) return
+
+    let cancelled = false
+    setError(null)
     getCapsule(id)
-      .then(setSelectedCapsule)
-      .catch((err: any) => setError(err))
-      .finally(() => setLoadingCapsule(false))
-  }, [location.pathname, selectedCapsule?.id, loadingCapsule])
+      .then((capsule) => {
+        if (!cancelled) setSelectedCapsule(capsule)
+      })
+      .catch((err: any) => {
+        if (!cancelled) {
+          setSelectedCapsule(null)
+          setError(err)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [location.pathname, selectedCapsule?.id])
 
   // --- Render ---
   return (
-    <div className="flex min-h-screen flex-col">
-      <Header
-        isAuthenticated={isAuthenticated}
-        onAccount={() => loadProfile()}
-        onLogout={logout}
-        onLoadCapsules={loadCapsules}
-        profileRole={profile?.role}
-      />
-      <main className="flex-1">
+    <div
+      className={`flex min-h-screen flex-col ${hasCosmicShell ? 'bg-[#030816] text-slate-100' : ''}`}
+      style={{
+        ['--tc-shell-offset' as any]: shellOffset,
+        ['--tc-footer-height' as any]: showFooter ? `${footerHeight}px` : '0px',
+      }}
+    >
+      {!isCosmicConceptRoute && !isAuthRoute && (
+        <Header
+          isAuthenticated={isAuthenticated}
+          onLogout={logout}
+          profileRole={profile?.role}
+          profile={profile}
+          isLanding={hasFixedTopShell}
+        />
+      )}
+      {showImpersonationBanner && (
+        <div className="fixed inset-x-0 top-16 z-[45] border-b border-amber-300/35 bg-amber-500/14 backdrop-blur-md">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm text-amber-100 lg:px-6 xl:px-8">
+            <p>
+              You are viewing as user <span className="font-semibold">{profile?.username || profile?.email}</span>.
+            </p>
+            <button
+              type="button"
+              onClick={() => void stopImpersonation()}
+              disabled={stoppingImpersonation}
+              className="inline-flex items-center gap-2 rounded-md border border-amber-300/45 bg-amber-400/18 px-3 py-1.5 text-xs font-semibold text-amber-50 transition-colors hover:bg-amber-400/28 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {stoppingImpersonation ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Stop impersonation
+            </button>
+          </div>
+        </div>
+      )}
+      <main className={`flex-1 ${hasCosmicShell ? 'bg-[#050816]' : ''} ${topShellPaddingClass}`}>
         <Routes>
+          <Route path="/landing-concept" element={<CosmicLandingConcept />} />
+          <Route path="/landing-concept/account-preview" element={<CosmicLandingConcept />} />
+
           <Route path="/" element={
             <>
-              <HeroSection isAuthenticated={isAuthenticated} onLoadCapsules={loadCapsules} />
-              {!isAuthenticated && <HowItWorks />}
-              {!isAuthenticated && <CtaSection />}
+              <HeroSection isAuthenticated={showAuthenticatedLandingLayout} hasFooter={showFooter} />
+              {sessionResolved && !isAuthenticated && <HowItWorks />}
+              {sessionResolved && !isAuthenticated && <CtaSection />}
             </>
           } />
 
@@ -350,13 +491,14 @@ function App() {
                <CapsuleDetail
                  capsule={selectedCapsule}
                  following={following}
-                 onBack={async () => {
-                   const fromState = (location.state as { from?: string } | null)?.from
-                   const backTarget = fromState || '/capsules'
-                   if (backTarget === '/capsules') {
-                     await loadCapsules()
+                 onBack={() => {
+                   const historyIdx = window.history.state?.idx
+                   if (typeof historyIdx === "number" && historyIdx > 0) {
+                     navigate(-1)
+                     return
                    }
-                   navigate(backTarget, { replace: true })
+                   const fromState = (location.state as { from?: string } | null)?.from
+                   navigate(fromState || "/account", { replace: true })
                  }}
                  onUnlock={handleUnlockCapsule}
                  error={error}
@@ -407,19 +549,17 @@ function App() {
 
           <Route path="/chat" element={
             isAdmin ? <Navigate to="/admin" replace /> : (
-              <div className="mx-auto max-w-4xl px-4 py-6" style={{ minHeight: '70vh' }}>
-                <ChatList currentUserId={profile?.id} />
-              </div>
+              <ChatWorkspace currentUserId={profile?.id} />
             )
           } />
 
-          <Route path="/chat/:userId" element={isAdmin ? <Navigate to="/admin" replace /> : <ChatRoute />} />
+          <Route path="/chat/:userId" element={isAdmin ? <Navigate to="/admin" replace /> : <ChatRoute currentUserId={profile?.id} />} />
 
           {/* OAuth redirect handler — handled by useEffect above */}
           <Route path="/auth/oauth2/redirect" element={null} />
         </Routes>
       </main>
-      <Footer />
+      {showFooter && <Footer isLanding={hasCosmicShell} onHeightChange={setFooterHeight} />}
     </div>
   )
 }
@@ -520,15 +660,67 @@ function AccountProfileRoute({ profile, capsules, onLoadCapsules }: { profile: U
   )
 }
 
-function ChatRoute() {
+function ChatRoute({ currentUserId }: { currentUserId?: string }) {
   const { userId } = useParams<{ userId: string }>()
   if (!userId) return null
+  return <ChatWorkspace userId={userId} currentUserId={currentUserId} />
+}
+
+function ChatWorkspace({ userId, currentUserId }: { userId?: string; currentUserId?: string }) {
+  const navigate = useNavigate()
+
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6" style={{ minHeight: '70vh' }}>
-      <ChatWindow userId={userId} />
-    </div>
+    <section className="relative isolate box-border h-[calc(100svh-var(--tc-shell-offset,4rem))] overflow-hidden bg-[#050816] px-3 py-3 sm:px-4 sm:py-4 lg:px-8 lg:py-5">
+      <div className="pointer-events-none absolute inset-0 -z-20" aria-hidden="true">
+        <SpaceBackgroundFrame className="opacity-[0.16] blur-[1px]" restoreSnapshot startSettled />
+      </div>
+      <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.74)_0%,rgba(3,8,20,0.82)_58%,rgba(3,8,22,0.9)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(94,230,255,0.06)_0%,rgba(94,230,255,0)_42%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_76%_30%,rgba(124,92,255,0.08)_0%,rgba(124,92,255,0)_44%)]" />
+      </div>
+
+      <div className="mx-auto h-full w-full max-w-7xl">
+        <div className="flex h-full min-h-[440px] w-full overflow-hidden rounded-3xl border border-white/12 bg-slate-950/45 backdrop-blur-xl ring-1 ring-inset ring-white/5 shadow-[0_28px_80px_rgba(2,6,23,0.62)] sm:min-h-[520px]">
+          <aside className={`${userId ? 'hidden md:flex' : 'flex'} w-full min-w-0 flex-col bg-[#071022]/45 md:w-[320px] md:border-r md:border-white/12 xl:w-[360px]`}>
+            <ChatList selectedUserId={userId} currentUserId={currentUserId} />
+          </aside>
+
+          <div className={`${userId ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-[#050d20]/35`}>
+            {userId ? (
+              <ChatWindow userId={userId} currentUserId={currentUserId} />
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+                <div className="mb-5 rounded-2xl border border-white/12 bg-white/[0.05] p-4 shadow-[0_0_36px_rgba(124,92,255,0.16)]">
+                  <MessageCircle className="h-8 w-8 text-cyan-200" />
+                </div>
+                <h2 className="font-serif text-2xl font-semibold text-slate-100">Your conversations live here</h2>
+                <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-300">
+                  Share capsules, send memories, and stay connected through time.
+                </p>
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    onClick={() => navigate('/search')}
+                    className="inline-flex items-center gap-2 rounded-xl border border-violet-300/28 bg-violet-500/85 px-5 py-2.5 text-sm font-semibold text-slate-50 shadow-[0_8px_22px_rgba(84,99,229,0.26)] transition-colors hover:bg-violet-500"
+                  >
+                    <PenSquare className="h-4 w-4" />
+                    Start a new chat
+                  </button>
+                  <button
+                    onClick={() => navigate('/capsules')}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-5 py-2.5 text-sm font-semibold text-slate-100 transition-colors hover:bg-white/[0.09]"
+                  >
+                    <Sparkles className="h-4 w-4 text-cyan-200" />
+                    Open capsules
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
 export default App
-

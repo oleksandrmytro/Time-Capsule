@@ -14,8 +14,10 @@ import { TagPicker } from "@/components/capsules/tag-picker"
 import { MediaUploader, type MediaFile } from "@/components/media/media-uploader"
 import { uploadCoverImage, uploadMedia } from "@/services/api"
 import type { ApiError, Capsule, CreateCapsulePayload } from "@/services/api"
+import { SpaceBackgroundFrame } from "@/components/space-background-frame"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
+import "./create-capsule-form.css"
 
 interface NominatimPlace {
   place_id: string | number
@@ -34,9 +36,9 @@ interface CreateCapsuleFormProps {
 const PICKER_DEFAULT_CENTER: [number, number] = [26, 12]
 const PICKER_DEFAULT_ZOOM = 2
 const OSM_TILE_URL = "/tiles/osm/{z}/{x}/{y}.png"
-const CARTO_TILE_URL = "/tiles/carto/{z}/{x}/{y}{r}.png"
+const CARTO_TILE_URL = "/tiles/carto-dark/{z}/{x}/{y}{r}.png"
 const DIRECT_OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-const DIRECT_CARTO_TILE_URL = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+const DIRECT_CARTO_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
 
 function forceLeafletLayout(map: L.Map) {
   const sync = () => {
@@ -157,6 +159,10 @@ function bindFreeTileLayer(map: L.Map) {
 export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: CreateCapsuleFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [localError, setLocalError] = useState<ApiError | null>(null)
+  const [title, setTitle] = useState("")
+  const [body, setBody] = useState("")
+  const [unlockAt, setUnlockAt] = useState("")
+  const [expiresAt, setExpiresAt] = useState("")
   const [tags, setTags] = useState<string[]>([])
   const [coverValue, setCoverValue] = useState<File | string | null>(null)
   const [visibility, setVisibility] = useState("private")
@@ -203,6 +209,16 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   const maxDate = new Date("2100-12-31T23:59")
   const minDateString = minDate.toISOString().slice(0, 16)
   const maxDateString = maxDate.toISOString().slice(0, 16)
+
+  const sectionCardClass = "rounded-2xl border border-white/12 bg-slate-900/40 p-4 backdrop-blur-xl shadow-[0_20px_54px_rgba(2,6,23,0.38)] sm:p-5"
+  const sectionTitleClass = "text-xs font-semibold uppercase tracking-[0.16em] text-slate-300/80"
+  const inputClass = "h-11 rounded-xl border border-white/12 bg-white/[0.04] text-slate-100 placeholder:text-slate-400 focus-visible:border-violet-300/55 focus-visible:ring-1 focus-visible:ring-violet-300/60"
+  const pickerInputClass = `${inputClass} capsule-dark-input`
+  const textareaClass = "min-h-[120px] resize-y rounded-xl border border-white/12 bg-white/[0.04] text-slate-100 placeholder:text-slate-400 focus-visible:border-violet-300/55 focus-visible:ring-1 focus-visible:ring-violet-300/60"
+  const selectTriggerClass = "h-11 w-full rounded-xl border border-white/12 bg-white/[0.04] text-slate-100 focus:border-violet-300/55 focus:ring-1 focus:ring-violet-300/60"
+  const selectContentClass = "border-white/12 bg-[#0b1328] text-slate-100"
+  const selectItemClass = "text-slate-200 focus:bg-violet-500/20 focus:text-slate-100"
+  const switchClass = "border-white/30 data-[state=unchecked]:bg-slate-700/90 data-[state=checked]:bg-violet-500 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
 
   const parsedLat = Number(locationLat)
   const parsedLon = Number(locationLon)
@@ -426,13 +442,10 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLocalError(null)
-    const fd = new FormData(e.currentTarget)
-    const title = fd.get("title")?.toString().trim() || ""
-    const body = fd.get("body")?.toString().trim() || ""
-    const unlockAt = fd.get("unlockAt")?.toString() || ""
-    const expiresAt = fd.get("expiresAt")?.toString() || ""
+    const trimmedTitle = title.trim()
+    const trimmedBody = body.trim()
 
-    if (!title) {
+    if (!trimmedTitle) {
       setLocalError({ status: 0, message: "Title is required" })
       return
     }
@@ -494,8 +507,8 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
       }
 
       const created = await onSubmit({
-        title,
-        body: body || null,
+        title: trimmedTitle,
+        body: trimmedBody || null,
         visibility,
         status,
         unlockAt: new Date(unlockAt).toISOString(),
@@ -523,184 +536,280 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 lg:px-8">
-      <Button variant="ghost" size="sm" onClick={() => (onCancel ? onCancel() : navigate(-1))} className="mb-6 -ml-3 gap-1.5 text-muted-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back
-      </Button>
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
-        <h1 className="mb-2 font-serif text-2xl font-bold tracking-tight text-card-foreground">Create Time Capsule</h1>
-        <p className="mb-6 text-sm text-muted-foreground">Fill in the details below to create your capsule.</p>
+    <section className="relative isolate min-h-[calc(100svh-var(--tc-shell-offset,4rem))] overflow-hidden bg-[#050816] px-4 py-5 lg:px-8 lg:py-7">
+      <div className="pointer-events-none absolute inset-0 -z-20" aria-hidden="true">
+        <SpaceBackgroundFrame className="opacity-[0.24] blur-[1px]" restoreSnapshot startSettled />
+      </div>
+      <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,6,16,0.68)_0%,rgba(3,6,16,0.78)_58%,rgba(3,6,16,0.88)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,rgba(124,92,255,0.12)_0%,rgba(124,92,255,0)_42%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_24%,rgba(94,230,255,0.11)_0%,rgba(94,230,255,0)_40%)]" />
+      </div>
 
-        {error && <AlertBanner type="error" message={error.message || "Failed to create capsule"} onDismiss={() => setLocalError(null)} />}
+      <div className="mx-auto w-full max-w-7xl">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => (onCancel ? onCancel() : navigate(-1))}
+          className="mb-5 -ml-2 gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.08] hover:text-slate-100"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back
+        </Button>
 
-        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="title" className="text-sm font-medium">
-              Title <span className="text-destructive">*</span>
-            </Label>
-            <Input id="title" name="title" type="text" placeholder="Give your capsule a name..." className="h-11" maxLength={200} required />
-            <p className="text-xs text-muted-foreground">Max 200 characters</p>
+        {error && (
+          <div className="mb-5 rounded-xl border border-rose-300/28 bg-rose-500/8 p-2">
+            <AlertBanner type="error" message={error.message || "Failed to create capsule"} onDismiss={() => setLocalError(null)} />
           </div>
+        )}
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="body" className="text-sm font-medium">Message</Label>
-            <Textarea id="body" name="body" placeholder="Write your message to the future..." className="min-h-[140px] resize-y" maxLength={5000} />
-            <p className="text-xs text-muted-foreground">Optional. Max 5000 characters</p>
-          </div>
+        <div className="grid gap-6">
+          <form onSubmit={handleSubmit} className="grid min-w-0 gap-5 lg:grid-cols-2">
+            <section className={sectionCardClass}>
+              <p className={sectionTitleClass}>Basic Info</p>
+              <h1 className="mt-2 font-serif text-2xl font-semibold text-slate-50">Create Time Capsule</h1>
+              <p className="mt-1 text-sm text-slate-300">Write it today. Reopen it in the future.</p>
 
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">
-                Visibility <span className="text-destructive">*</span>
-              </Label>
-              <Select value={visibility} onValueChange={setVisibility}>
-                <SelectTrigger className="h-11"><SelectValue placeholder="Select visibility" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="private">
-                    <span className="flex items-center gap-2"><Lock className="h-3.5 w-3.5" />Private</span>
-                  </SelectItem>
-                  <SelectItem value="public">
-                    <span className="flex items-center gap-2"><Globe className="h-3.5 w-3.5" />Public</span>
-                  </SelectItem>
-                  <SelectItem value="shared">
-                    <span className="flex items-center gap-2"><Link2 className="h-3.5 w-3.5" />Shared</span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">
-                Status <span className="text-destructive">*</span>
-              </Label>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="h-11"><SelectValue placeholder="Select status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="draft">Draft</SelectItem>
-                  <SelectItem value="sealed">Sealed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              <div className="mt-5 flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="title" className="text-sm font-medium text-slate-200">
+                    Title <span className="text-rose-300">*</span>
+                  </Label>
+                  <Input
+                    id="title"
+                    name="title"
+                    type="text"
+                    placeholder="Give your capsule a name..."
+                    className={inputClass}
+                    maxLength={200}
+                    required
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-400">Max 200 characters</p>
+                </div>
 
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="unlockAt" className="text-sm font-medium">
-                Unlock Date <span className="text-destructive">*</span>
-              </Label>
-              <Input id="unlockAt" name="unlockAt" type="datetime-local" className="h-11" min={minDateString} max={maxDateString} required />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="expiresAt" className="text-sm font-medium">Expires Date</Label>
-              <Input id="expiresAt" name="expiresAt" type="datetime-local" className="h-11" min={minDateString} max={maxDateString} />
-              <p className="text-xs text-muted-foreground">Optional</p>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label className="text-sm font-medium">Cover Image</Label>
-            <CoverUploader coverValue={coverValue} onCoverChange={setCoverValue} />
-            <p className="text-xs text-muted-foreground">
-              Optional. Shown as thumbnail in capsule lists. Selecting a tag with image will suggest it as cover.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label className="text-sm font-medium">Media</Label>
-            <MediaUploader files={mediaFiles} onFilesChange={setMediaFiles} />
-            <p className="text-xs text-muted-foreground">Optional. Add photos or videos to your capsule.</p>
-          </div>
-
-          <TagPicker selectedTags={tags} onTagsChange={setTags} onCoverSuggestion={(url) => { if (!coverValue) setCoverValue(url) }} />
-
-          <div className="flex flex-col gap-3 rounded-xl border border-border bg-secondary/20 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">Attach Location</p>
-                <p className="text-xs text-muted-foreground">Pick location in a separate map dialog with search or current GPS.</p>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="body" className="text-sm font-medium text-slate-200">Message</Label>
+                  <Textarea
+                    id="body"
+                    name="body"
+                    placeholder="Write your message to the future..."
+                    className={textareaClass}
+                    maxLength={5000}
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-400">Optional. Max 5000 characters</p>
+                </div>
               </div>
-              <Switch
-                checked={useLocation}
-                onCheckedChange={(checked) => {
-                  if (!checked) {
-                    clearLocation()
-                    return
-                  }
-                  setUseLocation(true)
-                  openLocationPicker()
-                }}
-              />
-            </div>
+            </section>
 
-            <div className="rounded-lg border border-border/70 bg-background/70 p-3">
-              {hasValidLocation ? (
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">{locationLabel || "Custom location"}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Lat {parsedLat.toFixed(6)}, Lon {parsedLon.toFixed(6)}
+            <section className={sectionCardClass}>
+              <p className={sectionTitleClass}>Settings</p>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm font-medium text-slate-200">
+                    Visibility <span className="text-rose-300">*</span>
+                  </Label>
+                  <Select value={visibility} onValueChange={setVisibility}>
+                    <SelectTrigger className={selectTriggerClass}><SelectValue placeholder="Select visibility" /></SelectTrigger>
+                    <SelectContent className={selectContentClass}>
+                      <SelectItem value="private" className={selectItemClass}>
+                        <span className="flex items-center gap-2"><Lock className="h-3.5 w-3.5" />Private</span>
+                      </SelectItem>
+                      <SelectItem value="public" className={selectItemClass}>
+                        <span className="flex items-center gap-2"><Globe className="h-3.5 w-3.5" />Public</span>
+                      </SelectItem>
+                      <SelectItem value="shared" className={selectItemClass}>
+                        <span className="flex items-center gap-2"><Link2 className="h-3.5 w-3.5" />Shared</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm font-medium text-slate-200">
+                    Status <span className="text-rose-300">*</span>
+                  </Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger className={selectTriggerClass}><SelectValue placeholder="Select status" /></SelectTrigger>
+                    <SelectContent className={selectContentClass}>
+                      <SelectItem value="draft" className={selectItemClass}>Draft</SelectItem>
+                      <SelectItem value="sealed" className={selectItemClass}>Sealed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="unlockAt" className="text-sm font-medium text-slate-200">
+                    Unlock Date <span className="text-rose-300">*</span>
+                  </Label>
+                  <Input
+                    id="unlockAt"
+                    name="unlockAt"
+                    type="datetime-local"
+                    className={pickerInputClass}
+                    min={minDateString}
+                    max={maxDateString}
+                    required
+                    value={unlockAt}
+                    onChange={(e) => setUnlockAt(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="expiresAt" className="text-sm font-medium text-slate-200">Expires Date</Label>
+                  <Input
+                    id="expiresAt"
+                    name="expiresAt"
+                    type="datetime-local"
+                    className={pickerInputClass}
+                    min={minDateString}
+                    max={maxDateString}
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-400">Optional</p>
+                </div>
+              </div>
+
+              {visibility === "public" && (
+                <div className="mt-4 grid gap-3 rounded-xl border border-white/12 bg-white/[0.03] p-3 sm:grid-cols-2">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-slate-100">Allow Comments</p>
+                      <p className="text-xs text-slate-400">Let others comment on your capsule</p>
+                    </div>
+                    <Switch className={switchClass} checked={allowComments} onCheckedChange={setAllowComments} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-slate-100">Allow Reactions</p>
+                      <p className="text-xs text-slate-400">Let others react to your capsule</p>
+                    </div>
+                    <Switch className={switchClass} checked={allowReactions} onCheckedChange={setAllowReactions} />
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-col gap-3 rounded-xl border border-white/12 bg-white/[0.03] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-100">Attach Location</p>
+                    <p className="text-xs text-slate-400">Pick a location with map search or current GPS.</p>
+                  </div>
+                  <Switch
+                    className={switchClass}
+                    checked={useLocation}
+                    onCheckedChange={(checked) => {
+                      if (!checked) {
+                        clearLocation()
+                        return
+                      }
+                      setUseLocation(true)
+                      openLocationPicker()
+                    }}
+                  />
+                </div>
+
+                <div className="flex min-h-[62px] flex-col justify-center rounded-lg border border-white/10 bg-[#0a1328]/70 p-3">
+                  <p className="truncate text-sm font-medium text-slate-100">
+                    {hasValidLocation ? (locationLabel || "Custom location") : "No location selected"}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {hasValidLocation
+                      ? `Lat ${parsedLat.toFixed(6)}, Lon ${parsedLon.toFixed(6)}`
+                      : "Enable location to choose a point on the map"}
                   </p>
                 </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-1.5 border-white/18 bg-white/[0.03] text-slate-100 hover:bg-white/[0.08] sm:w-auto"
+                    onClick={openLocationPicker}
+                  >
+                    <MapPin className="h-4 w-4" /> {hasValidLocation ? "Edit location" : "Select location"}
+                  </Button>
+                  {hasValidLocation && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="w-full gap-1.5 text-slate-300 hover:bg-white/[0.08] hover:text-slate-100 sm:w-auto"
+                      onClick={clearLocation}
+                    >
+                      <X className="h-4 w-4" /> Clear
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className={sectionCardClass}>
+              <p className={sectionTitleClass}>Media</p>
+              <div className="mt-4 flex flex-col gap-5">
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm font-medium text-slate-200">Cover Image</Label>
+                  <CoverUploader coverValue={coverValue} onCoverChange={setCoverValue} theme="cosmic" />
+                  <p className="text-xs text-slate-400">
+                    Optional. Shown as thumbnail in capsule lists. Selecting a tag with image can suggest a cover.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label className="text-sm font-medium text-slate-200">Media</Label>
+                  <MediaUploader files={mediaFiles} onFilesChange={setMediaFiles} theme="cosmic" />
+                  <p className="text-xs text-slate-400">Optional. Add photos or videos to your capsule.</p>
+                </div>
+              </div>
+            </section>
+
+            <section className={sectionCardClass}>
+              <p className={sectionTitleClass}>Tags</p>
+              <div className="mt-4 flex flex-col gap-4">
+                <TagPicker selectedTags={tags} onTagsChange={setTags} onCoverSuggestion={(url) => { if (!coverValue) setCoverValue(url) }} theme="cosmic" />
+                <p className="text-xs text-slate-400">
+                  Add thematic tags to improve discovery and organize your capsule.
+                </p>
+              </div>
+            </section>
+
+            <Button
+              type="submit"
+              className="h-12 w-full rounded-xl border border-violet-300/32 bg-[linear-gradient(120deg,rgba(124,92,255,0.86)_0%,rgba(74,120,216,0.82)_100%)] text-sm font-semibold text-slate-50 shadow-[0_12px_28px_rgba(84,99,229,0.28),0_0_20px_rgba(94,230,255,0.12)] transition-all hover:brightness-105 hover:shadow-[0_16px_34px_rgba(84,99,229,0.34),0_0_24px_rgba(94,230,255,0.16)] lg:col-span-2"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating capsule...
+                </>
               ) : (
-                <p className="text-sm text-muted-foreground">No location selected yet.</p>
+                "Create Capsule"
               )}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={openLocationPicker}>
-                <MapPin className="h-4 w-4" /> {hasValidLocation ? "Edit location" : "Select location"}
-              </Button>
-              {hasValidLocation && (
-                <Button type="button" variant="ghost" size="sm" className="gap-1.5" onClick={clearLocation}>
-                  <X className="h-4 w-4" /> Clear
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {visibility === "public" && (
-            <div className="flex flex-col gap-4 rounded-xl border border-border bg-secondary/30 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Allow Comments</p>
-                  <p className="text-xs text-muted-foreground">Let others comment on your capsule</p>
-                </div>
-                <Switch checked={allowComments} onCheckedChange={setAllowComments} />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Allow Reactions</p>
-                  <p className="text-xs text-muted-foreground">Let others react to your capsule</p>
-                </div>
-                <Switch checked={allowReactions} onCheckedChange={setAllowReactions} />
-              </div>
-            </div>
-          )}
-
-          <Button type="submit" className="h-12 w-full text-sm font-semibold" disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating capsule...
-              </>
-            ) : (
-              "Create Capsule"
-            )}
-          </Button>
-        </form>
+            </Button>
+          </form>
+        </div>
       </div>
 
       <Dialog open={locationPickerOpen} onOpenChange={handleLocationPickerOpenChange}>
-        <DialogContent className="max-h-[92vh] w-[96vw] max-w-5xl overflow-hidden p-0">
-          <DialogHeader className="border-b border-border px-6 pb-4 pt-6">
-            <DialogTitle className="font-serif text-xl">Choose Capsule Location</DialogTitle>
-            <DialogDescription>
-              Search place name (Nominatim), click map, or use current geolocation.
+        <DialogContent className="max-h-[94vh] w-[96vw] max-w-6xl overflow-hidden border border-white/12 bg-[#070f22]/92 p-0 text-slate-100 backdrop-blur-2xl shadow-[0_30px_90px_rgba(2,6,23,0.72)]">
+          <DialogHeader className="border-b border-white/10 px-6 pb-4 pt-6">
+            <DialogTitle className="font-serif text-xl text-slate-100">Choose Capsule Location</DialogTitle>
+            <DialogDescription className="text-slate-300/85">
+              Search place name, click map, or use current geolocation.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 px-6 py-4">
             <div className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   value={pickerSearch}
                   onChange={(e) => setPickerSearch(e.target.value)}
@@ -711,40 +820,51 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
                     }
                   }}
                   placeholder="Search city, address, country..."
-                  className="pl-9"
+                  className="h-11 rounded-xl border-white/12 bg-white/[0.04] pl-9 text-slate-100 placeholder:text-slate-400 focus-visible:border-violet-300/55 focus-visible:ring-1 focus-visible:ring-violet-300/60"
                 />
               </div>
-              <Button type="button" variant="outline" className="gap-1.5" onClick={searchLocation} disabled={pickerLoading}>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 gap-1.5 border-white/14 bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]"
+                onClick={searchLocation}
+                disabled={pickerLoading}
+              >
                 {pickerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 Search
               </Button>
-              <Button type="button" variant="outline" className="gap-1.5" onClick={useCurrentLocation}>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 gap-1.5 border-white/14 bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]"
+                onClick={useCurrentLocation}
+              >
                 <LocateFixed className="h-4 w-4" /> Current location
               </Button>
             </div>
 
             {pickerError && <AlertBanner type="error" message={pickerError} />}
 
-            <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-              <div className="overflow-hidden rounded-xl border border-border">
-                <div ref={setPickerMapHostEl} className="h-[420px] w-full bg-slate-900" />
+            <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+              <div className="overflow-hidden rounded-xl border border-white/12 bg-[#060b18]">
+                <div ref={setPickerMapHostEl} className="h-[420px] w-full bg-slate-950" />
               </div>
 
-              <div className="flex h-[420px] flex-col rounded-xl border border-border bg-card/40">
-                <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                  <p className="text-sm font-medium">Search Results</p>
-                  <Crosshair className="h-4 w-4 text-muted-foreground" />
+              <div className="flex h-[420px] flex-col rounded-xl border border-white/12 bg-white/[0.03]">
+                <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
+                  <p className="text-sm font-medium text-slate-100">Search Results</p>
+                  <Crosshair className="h-4 w-4 text-slate-400" />
                 </div>
                 <div className="flex-1 overflow-auto p-2">
                   {pickerResults.length === 0 ? (
-                    <p className="px-2 py-3 text-xs text-muted-foreground">No results yet. Try searching a place.</p>
+                    <p className="px-2 py-3 text-xs text-slate-400">No results yet. Try searching a place.</p>
                   ) : (
                     <div className="space-y-1">
                       {pickerResults.map((place) => (
                         <button
                           key={String(place.place_id)}
                           type="button"
-                          className="w-full rounded-md border border-transparent px-2 py-2 text-left hover:border-border hover:bg-muted/40"
+                          className="w-full rounded-md border border-transparent px-2 py-2 text-left transition-colors hover:border-white/16 hover:bg-white/[0.06]"
                           onClick={() => {
                             const lat = Number(place.lat)
                             const lon = Number(place.lon)
@@ -752,8 +872,8 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
                             applyPickerPosition(lat, lon, place.display_name, 10)
                           }}
                         >
-                          <p className="line-clamp-2 text-xs text-foreground">{place.display_name}</p>
-                          {place.type && <p className="mt-1 text-[11px] text-muted-foreground">{place.type}</p>}
+                          <p className="line-clamp-2 text-xs text-slate-100">{place.display_name}</p>
+                          {place.type && <p className="mt-1 text-[11px] text-slate-400">{place.type}</p>}
                         </button>
                       ))}
                     </div>
@@ -764,7 +884,7 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="pickerLat">Latitude</Label>
+                <Label htmlFor="pickerLat" className="text-slate-200">Latitude</Label>
                 <Input
                   id="pickerLat"
                   type="number"
@@ -773,10 +893,11 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
                   max={90}
                   value={pickerLat}
                   onChange={(e) => setPickerLat(e.target.value)}
+                  className="h-11 rounded-xl border-white/12 bg-white/[0.04] text-slate-100 focus-visible:border-violet-300/55 focus-visible:ring-1 focus-visible:ring-violet-300/60"
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="pickerLon">Longitude</Label>
+                <Label htmlFor="pickerLon" className="text-slate-200">Longitude</Label>
                 <Input
                   id="pickerLon"
                   type="number"
@@ -785,20 +906,27 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
                   max={180}
                   value={pickerLon}
                   onChange={(e) => setPickerLon(e.target.value)}
+                  className="h-11 rounded-xl border-white/12 bg-white/[0.04] text-slate-100 focus-visible:border-violet-300/55 focus-visible:ring-1 focus-visible:ring-violet-300/60"
                 />
               </div>
             </div>
 
-            {pickerLabel && <p className="text-xs text-muted-foreground">Selected: {pickerLabel}</p>}
+            {pickerLabel && <p className="text-xs text-slate-300/90">Selected: {pickerLabel}</p>}
           </div>
 
-          <DialogFooter className="border-t border-border px-6 py-4">
-            <Button type="button" variant="ghost" onClick={() => setLocationPickerOpen(false)}>Cancel</Button>
-            <Button type="button" variant="outline" onClick={clearLocation}>Clear</Button>
-            <Button type="button" onClick={applyLocationFromPicker}>Apply location</Button>
+          <DialogFooter className="border-t border-white/10 px-6 py-4">
+            <Button type="button" variant="ghost" className="text-slate-300 hover:bg-white/[0.08] hover:text-slate-100" onClick={() => setLocationPickerOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="outline" className="border-white/14 bg-white/[0.03] text-slate-100 hover:bg-white/[0.08]" onClick={clearLocation}>
+              Clear
+            </Button>
+            <Button type="button" className="border border-violet-300/26 bg-violet-500/85 text-slate-50 hover:bg-violet-500" onClick={applyLocationFromPicker}>
+              Apply location
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   )
 }

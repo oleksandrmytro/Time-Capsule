@@ -24,6 +24,10 @@ public class UserProfileResponse {
     private String bio;
     private String location;
     private String website;
+    private Boolean mustChangePassword;
+    private Boolean impersonating;
+    private String actingAdminId;
+    private String actingAdminEmail;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -65,6 +69,14 @@ public class UserProfileResponse {
     public void setLocation(String location) { this.location = location; }
     public String getWebsite() { return website; }
     public void setWebsite(String website) { this.website = website; }
+    public Boolean getMustChangePassword() { return mustChangePassword; }
+    public void setMustChangePassword(Boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
+    public Boolean getImpersonating() { return impersonating; }
+    public void setImpersonating(Boolean impersonating) { this.impersonating = impersonating; }
+    public String getActingAdminId() { return actingAdminId; }
+    public void setActingAdminId(String actingAdminId) { this.actingAdminId = actingAdminId; }
+    public String getActingAdminEmail() { return actingAdminEmail; }
+    public void setActingAdminEmail(String actingAdminEmail) { this.actingAdminEmail = actingAdminEmail; }
 
     public static class AuthProvider {
         private String provider;

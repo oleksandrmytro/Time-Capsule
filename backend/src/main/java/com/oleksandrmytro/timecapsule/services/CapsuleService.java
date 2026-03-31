@@ -5,6 +5,7 @@ import com.oleksandrmytro.timecapsule.dto.ShareCapsuleRequest;
 import com.oleksandrmytro.timecapsule.events.CapsuleStatusEvent;
 import com.oleksandrmytro.timecapsule.models.Capsule;
 import com.oleksandrmytro.timecapsule.models.Share;
+import com.oleksandrmytro.timecapsule.models.User;
 import com.oleksandrmytro.timecapsule.models.enums.CapsuleStatus;
 import com.oleksandrmytro.timecapsule.models.enums.CapsuleVisibility;
 import com.oleksandrmytro.timecapsule.models.enums.ChatMessageStatus;
@@ -804,6 +805,18 @@ public class CapsuleService {
     }
 
     public CapsuleResponse getAccessible(String id, String viewerId) {
+        if (viewerId != null) {
+            boolean isAdmin = userRepository.findById(viewerId)
+                    .map(User::getRole)
+                    .map(role -> role == User.Role.ADMIN)
+                    .orElse(false);
+            if (isAdmin) {
+                Capsule capsule = capsuleRepository.findByIdAndDeletedAtIsNull(id)
+                        .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
+                return toResponse(capsule);
+            }
+        }
+
         // Якщо користувач авторизований, спочатку пробуємо власницький/шаринг-режим
         if (viewerId != null) {
             try {
