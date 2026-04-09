@@ -1,29 +1,11 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState, useCallback, useRef, type ReactNode } from 'react'
 import { Routes, Route, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom'
 import Header from './components/Header'
 import { Footer } from './components/footer'
-import { HeroSection } from './components/landing/hero-section'
-import { HowItWorks } from './components/landing/how-it-works'
-import { CtaSection } from './components/landing/cta-section'
-import { CosmicLandingConcept } from './components/landing/cosmic-landing-concept'
-import { LoginForm } from './components/auth/login-form'
-import { RegisterForm } from './components/auth/register-form'
-import { VerifyForm } from './components/auth/verify-form'
-import { AccountForm } from './components/account/account-form'
-import { CapsulesList } from './components/capsules/capsules-list'
-import { CreateCapsuleForm } from './components/capsules/create-capsule-form'
-import { CapsuleDetail } from './components/capsules/capsule-detail'
-import { UserSearch } from './components/users/user-search'
-import { UserProfileView } from './components/users/user-profile'
-import { ChatList } from './components/chat/chat-list'
-import { ChatWindow } from './components/chat/chat-window'
-import { CalendarView } from './components/capsules/calendar-view'
-import { CapsulesMapView } from './components/capsules/capsules-map-view'
-import { AdminPanel } from './components/admin/admin-panel'
 import {
-  apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, unlockCapsule, getCurrentUser, updateCurrentUser, getUserProfile, getFollowing, getFollowers, getUserCapsules, followUser, unfollowUser,
+  apiRequest, oauthLinks, createCapsule, listMyCapsules, getCapsule, getEditableCapsule, updateCapsule, unlockCapsule, getCurrentUser, updateCurrentUser, getUserProfile, getFollowing, getFollowers, getUserCapsules, followUser, unfollowUser,
   stopImpersonation as stopImpersonationApi,
-  type UserProfile, type Capsule, type ApiError, type CreateCapsulePayload, type UserPublic,
+  type UserProfile, type Capsule, type ApiError, type CreateCapsulePayload, type UpdateCapsulePayload, type UserPublic,
 } from './services/api'
 import { connectCapsuleStream, disconnectCapsuleStream } from './services/ws'
 import { EmptyState } from './components/empty-state'
@@ -37,6 +19,39 @@ const safeDecodeSegment = (value: string) => {
   } catch {
     return value
   }
+}
+
+const LazyHeroSection = lazy(() => import('./components/landing/hero-section').then((m) => ({ default: m.HeroSection })))
+const LazyHowItWorks = lazy(() => import('./components/landing/how-it-works').then((m) => ({ default: m.HowItWorks })))
+const LazyCtaSection = lazy(() => import('./components/landing/cta-section').then((m) => ({ default: m.CtaSection })))
+const LazyCosmicLandingConcept = lazy(() => import('./components/landing/cosmic-landing-concept').then((m) => ({ default: m.CosmicLandingConcept })))
+const LazyLoginForm = lazy(() => import('./components/auth/login-form').then((m) => ({ default: m.LoginForm })))
+const LazyRegisterForm = lazy(() => import('./components/auth/register-form').then((m) => ({ default: m.RegisterForm })))
+const LazyVerifyForm = lazy(() => import('./components/auth/verify-form').then((m) => ({ default: m.VerifyForm })))
+const LazyAccountForm = lazy(() => import('./components/account/account-form').then((m) => ({ default: m.AccountForm })))
+const LazyCreateCapsuleForm = lazy(() => import('./components/capsules/create-capsule-form').then((m) => ({ default: m.CreateCapsuleForm })))
+const LazyCapsuleDetail = lazy(() => import('./components/capsules/capsule-detail').then((m) => ({ default: m.CapsuleDetail })))
+const LazyUserSearch = lazy(() => import('./components/users/user-search').then((m) => ({ default: m.UserSearch })))
+const LazyUserProfileView = lazy(() => import('./components/users/user-profile').then((m) => ({ default: m.UserProfileView })))
+const LazyChatList = lazy(() => import('./components/chat/chat-list').then((m) => ({ default: m.ChatList })))
+const LazyChatWindow = lazy(() => import('./components/chat/chat-window').then((m) => ({ default: m.ChatWindow })))
+const LazyCalendarView = lazy(() => import('./components/capsules/calendar-view').then((m) => ({ default: m.CalendarView })))
+const LazyCapsulesMapView = lazy(() => import('./components/capsules/capsules-map-view').then((m) => ({ default: m.CapsulesMapView })))
+const LazyAdminPanel = lazy(() => import('./components/admin/admin-panel').then((m) => ({ default: m.AdminPanel })))
+
+function RouteLoader() {
+  return (
+    <div className="flex min-h-[50vh] items-center justify-center px-4 py-12 text-slate-200">
+      <div className="inline-flex items-center gap-3 rounded-2xl border border-cyan-200/12 bg-[#11254f]/62 px-5 py-3 shadow-[0_24px_70px_rgba(6,18,42,0.34)] backdrop-blur-xl">
+        <Loader2 className="h-5 w-5 animate-spin text-cyan-100" />
+        <span className="text-sm font-medium">Loading page...</span>
+      </div>
+    </div>
+  )
+}
+
+function RouteSuspense({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteLoader />}>{children}</Suspense>
 }
 
 function App() {
@@ -59,7 +74,8 @@ function App() {
   const isChatRoute = location.pathname === '/chat' || location.pathname.startsWith('/chat/')
   const isCreateRoute = location.pathname === '/create'
   const isCalendarRoute = location.pathname === '/calendar'
-  const isCapsulesRoute = location.pathname === '/capsules' || location.pathname.startsWith('/capsules/')
+  const isCapsuleRoute = location.pathname.startsWith('/capsules/')
+  const isDiscoverRoute = location.pathname === '/discover'
   const isMapRoute = location.pathname === '/map'
   const isSearchRoute = location.pathname === '/search'
   const isAccountRoute = location.pathname.startsWith('/account')
@@ -78,7 +94,8 @@ function App() {
     isChatRoute ||
     isCreateRoute ||
     isCalendarRoute ||
-    isCapsulesRoute ||
+    isCapsuleRoute ||
+    isDiscoverRoute ||
     isMapRoute ||
     isSearchRoute ||
     isAccountRoute ||
@@ -89,7 +106,8 @@ function App() {
     isChatRoute ||
     isCreateRoute ||
     isCalendarRoute ||
-    isCapsulesRoute ||
+    isCapsuleRoute ||
+    isDiscoverRoute ||
     isMapRoute ||
     isSearchRoute ||
     isAccountRoute ||
@@ -158,8 +176,8 @@ function App() {
     const previousBodyBackground = document.body.style.background
     const previousHtmlBackground = document.documentElement.style.background
     if (hasCosmicShell) {
-      document.body.style.background = '#030816'
-      document.documentElement.style.background = '#030816'
+      document.body.style.background = 'radial-gradient(circle at 18% 12%, #315aa0 0%, #173768 30%, #0d2145 62%, #09152d 100%)'
+      document.documentElement.style.background = '#0d2145'
     }
     return () => {
       document.body.style.background = previousBodyBackground
@@ -283,6 +301,18 @@ function App() {
     return created
   }
 
+  const handleUpdateCapsule = async (capsuleId: string, capsuleData: UpdateCapsulePayload): Promise<Capsule> => {
+    const normalizedId = safeDecodeSegment(String(capsuleId || '')).trim()
+    if (!OBJECT_ID_RE.test(normalizedId)) {
+      throw { status: 400, message: 'Invalid capsule id' } as ApiError
+    }
+    setError(null)
+    const updated = await updateCapsule(normalizedId, capsuleData)
+    setSelectedCapsule(updated)
+    await loadCapsules()
+    return updated
+  }
+
   const viewCapsule = async (id: string) => {
     const normalizedId = safeDecodeSegment(String(id || "")).trim()
     if (!OBJECT_ID_RE.test(normalizedId)) {
@@ -313,11 +343,11 @@ function App() {
   useEffect(() => { selectedCapsuleRef.current = selectedCapsule }, [selectedCapsule])
 
   // WS-з'єднання потрібне на сторінках де є реальний час:
-  // - /capsules — автовідкриття капсул (CapsuleUnlockScheduler)
+  // - /account — автовідкриття капсул (CapsuleUnlockScheduler)
   // - /chat     — отримання повідомлень у реальному часі
   // При виході з цих сторінок — з'єднання закривається.
   const wsNeeded = isAuthenticated && (
-    location.pathname === '/capsules' ||
+    location.pathname === '/account' ||
     location.pathname.startsWith('/chat')
   )
 
@@ -344,9 +374,9 @@ function App() {
     return () => disconnectCapsuleStream()
   }, [wsNeeded, loadCapsules])
 
-  // --- Load capsules when navigating to /capsules or /account ---
+  // --- Load capsules when navigating to /account ---
   useEffect(() => {
-    if ((location.pathname === '/capsules' || (location.pathname === '/account' && !isAdmin)) && isAuthenticated) {
+    if (location.pathname === '/account' && !isAdmin && isAuthenticated) {
       loadCapsules()
     }
   }, [location.pathname, isAuthenticated, isAdmin])
@@ -381,6 +411,7 @@ function App() {
   // Direct navigation to /capsules/:id — fetch capsule and surface access errors
   useEffect(() => {
     if (!location.pathname.startsWith('/capsules/')) return
+    if (location.pathname.endsWith('/edit')) return
     const [, , rawId] = location.pathname.split('/')
     const id = safeDecodeSegment(rawId || '').trim()
     if (!id) return
@@ -412,7 +443,7 @@ function App() {
   // --- Render ---
   return (
     <div
-      className={`flex min-h-screen flex-col ${hasCosmicShell ? 'bg-[#030816] text-slate-100' : ''}`}
+      className={`flex min-h-screen flex-col ${hasCosmicShell ? 'bg-[radial-gradient(circle_at_18%_12%,#315aa0_0%,#173768_30%,#0d2145_62%,#09152d_100%)] text-slate-100' : ''}`}
       style={{
         ['--tc-shell-offset' as any]: shellOffset,
         ['--tc-footer-height' as any]: showFooter ? `${footerHeight}px` : '0px',
@@ -445,52 +476,79 @@ function App() {
           </div>
         </div>
       )}
-      <main className={`flex-1 ${hasCosmicShell ? 'bg-[#050816]' : ''} ${topShellPaddingClass}`}>
+      <main className={`flex-1 ${hasCosmicShell ? 'bg-[#10254b]/50' : ''} ${topShellPaddingClass}`}>
+        <Suspense fallback={<RouteLoader />}>
         <Routes>
-          <Route path="/landing-concept" element={<CosmicLandingConcept />} />
-          <Route path="/landing-concept/account-preview" element={<CosmicLandingConcept />} />
+          <Route path="/landing-concept" element={<LazyCosmicLandingConcept />} />
+          <Route path="/landing-concept/account-preview" element={<LazyCosmicLandingConcept />} />
 
           <Route path="/" element={
             <>
-              <HeroSection isAuthenticated={showAuthenticatedLandingLayout} hasFooter={showFooter} />
-              {sessionResolved && !isAuthenticated && <HowItWorks />}
-              {sessionResolved && !isAuthenticated && <CtaSection />}
+              <LazyHeroSection isAuthenticated={showAuthenticatedLandingLayout} hasFooter={showFooter} />
+              {sessionResolved && !isAuthenticated && <LazyHowItWorks />}
+              {sessionResolved && !isAuthenticated && <LazyCtaSection />}
             </>
           } />
 
           <Route path="/login" element={
-            <LoginForm form={form} onChange={handleChange} onLogin={login} disabled={disabledAuth} oauth={oauthLinks()} error={error} />
+            <LazyLoginForm form={form} onChange={handleChange} onLogin={login} disabled={disabledAuth} oauth={oauthLinks()} error={error} />
           } />
 
           <Route path="/register" element={
-            <RegisterForm form={form} onChange={handleChange} onSignup={signup} disabled={disabledAuth} oauth={oauthLinks()} error={error} />
+            <LazyRegisterForm form={form} onChange={handleChange} onSignup={signup} disabled={disabledAuth} oauth={oauthLinks()} error={error} />
           } />
 
           <Route path="/verify" element={
-            <VerifyForm form={form} onChange={handleChange} onVerify={verify} onResend={resend} error={error} />
+            <LazyVerifyForm form={form} onChange={handleChange} onVerify={verify} onResend={resend} error={error} />
           } />
 
           <Route path="/account" element={
-            isAdmin ? <Navigate to="/admin" replace /> : (profile ? <AccountProfileRoute profile={profile} capsules={capsules} onLoadCapsules={loadCapsules} /> : null)
+            isAdmin ? <Navigate to="/admin" replace /> : (profile ? <RouteSuspense><AccountProfileRoute profile={profile} capsules={capsules} onLoadCapsules={loadCapsules} /></RouteSuspense> : null)
           } />
 
           <Route path="/account/settings" element={
-            isAdmin ? <Navigate to="/admin" replace /> : <AccountForm profile={profile} onProfileChange={setProfile} onSave={updateProfile} onLogout={logout} />
+            isAdmin ? <Navigate to="/admin" replace /> : <LazyAccountForm profile={profile} onProfileChange={setProfile} onSave={updateProfile} onLogout={logout} />
           } />
 
           <Route path="/create" element={
-            isAdmin ? <Navigate to="/admin" replace /> : <CreateCapsuleForm onSubmit={handleCreateCapsule} error={error} />
+            isAdmin
+              ? <Navigate to="/admin" replace />
+              : isAuthenticated
+                ? <LazyCreateCapsuleForm onSubmit={handleCreateCapsule} error={error} />
+                : <Navigate to="/login" replace />
           } />
 
-          <Route path="/capsules" element={
-            isAdmin ? <Navigate to="/admin" replace /> : <CapsulesList capsules={capsules} isLoading={capsulesLoading} onSelect={viewCapsule} onCreate={() => navigate('/create')} />
+          <Route path="/discover" element={
+            isAdmin
+              ? <Navigate to="/admin" replace />
+              : <LazyUserSearch
+                  currentUserId={profile?.id}
+                  title="Discover Users"
+                  subtitle="Browse creators and open their public capsules from profile pages."
+                  showInitialUsers
+                />
+          } />
+
+          <Route
+            path="/capsules"
+            element={<Navigate to={isAuthenticated ? "/account" : "/discover"} replace />}
+          />
+
+          <Route path="/capsules/:id/edit" element={
+            isAdmin
+              ? <Navigate to="/admin" replace />
+              : isAuthenticated
+                ? <RouteSuspense><CapsuleEditRoute
+                    onSubmit={handleUpdateCapsule}
+                  /></RouteSuspense>
+                : <Navigate to="/login" replace />
           } />
 
           <Route path="/capsules/:id" element={
              selectedCapsule ? (
-               <CapsuleDetail
-                 capsule={selectedCapsule}
-                 following={following}
+                <LazyCapsuleDetail
+                  capsule={selectedCapsule}
+                  following={following}
                  onBack={() => {
                    const historyIdx = window.history.state?.idx
                    if (typeof historyIdx === "number" && historyIdx > 0) {
@@ -498,45 +556,50 @@ function App() {
                      return
                    }
                    const fromState = (location.state as { from?: string } | null)?.from
-                   navigate(fromState || "/account", { replace: true })
+                  navigate(fromState || (isAuthenticated ? "/account" : "/discover"), { replace: true })
                  }}
                  onUnlock={handleUnlockCapsule}
                  error={error}
                  onRefreshFollowing={() => profile?.id && loadFollowing(profile.id)}
                  isAuthenticated={isAuthenticated}
-                 currentUserId={profile?.id}
-               />
-             ) : error ? (
+                  currentUserId={profile?.id}
+                  canEdit={Boolean(
+                    isAuthenticated &&
+                    (isAdmin || (profile?.id && selectedCapsule.ownerId === profile.id && selectedCapsule.status !== 'opened'))
+                  )}
+                  onEdit={(id) => navigate(`/capsules/${id}/edit`, { state: { from: location.pathname } })}
+                />
+              ) : error ? (
                <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
                  <div className="w-full max-w-3xl">
                    <EmptyState
                      icon={ShieldOff}
                      title={error?.status === 403 ? 'You don’t have access to this capsule' : 'Capsule not found'}
-                     description={error?.status === 403
-                       ? 'Ask the owner to share access with you or send you a fresh invite link.'
-                       : 'The link might be outdated or the capsule was removed. Please check the URL or contact the owner.'}
-                     actionLabel="Back to capsules"
-                     onAction={() => navigate((location.state as any)?.from || '/capsules')}
-                   />
-                 </div>
-               </div>
+                      description={error?.status === 403
+                        ? 'Ask the owner to share access with you or send you a fresh invite link.'
+                        : 'The link might be outdated or the capsule was removed. Please check the URL or contact the owner.'}
+                      actionLabel={isAuthenticated ? "Back to profile" : "Back to discover"}
+                     onAction={() => navigate((location.state as any)?.from || (isAuthenticated ? '/account' : '/discover'))}
+                    />
+                  </div>
+                </div>
              ) : (
                <div className="mx-auto max-w-2xl px-4 py-10 text-center text-sm text-muted-foreground">Завантаження капсули...</div>
              )
           } />
 
-          <Route path="/search" element={isAdmin ? <Navigate to="/admin" replace /> : <UserSearch currentUserId={profile?.id} />} />
+          <Route path="/search" element={isAdmin ? <Navigate to="/admin" replace /> : <LazyUserSearch currentUserId={profile?.id} />} />
 
           <Route path="/calendar" element={
-            isAdmin ? <Navigate to="/admin" replace /> : <CalendarView onSelectCapsule={viewCapsule} />
+            isAdmin ? <Navigate to="/admin" replace /> : <LazyCalendarView onSelectCapsule={viewCapsule} />
           } />
 
           <Route path="/map" element={
-            isAdmin ? <Navigate to="/admin" replace /> : <CapsulesMapView />
+            isAdmin ? <Navigate to="/admin" replace /> : <LazyCapsulesMapView />
           } />
 
           <Route path="/admin/*" element={
-            isAdmin ? <AdminPanel /> : (
+            isAdmin ? <LazyAdminPanel /> : (
               <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
                 <div className="w-full max-w-3xl">
                   <EmptyState icon={ShieldOff} title="Access Denied" description="You don't have permission to access the admin panel." actionLabel="Go Home" onAction={() => navigate('/')} />
@@ -545,22 +608,100 @@ function App() {
             )
           } />
 
-          <Route path="/profile/:username" element={<ProfileRoute currentUserId={profile?.id} />} />
+          <Route path="/profile/:username" element={<RouteSuspense><ProfileRoute currentUserId={profile?.id} /></RouteSuspense>} />
 
           <Route path="/chat" element={
             isAdmin ? <Navigate to="/admin" replace /> : (
-              <ChatWorkspace currentUserId={profile?.id} />
+              <RouteSuspense><ChatWorkspace currentUserId={profile?.id} /></RouteSuspense>
             )
           } />
 
-          <Route path="/chat/:userId" element={isAdmin ? <Navigate to="/admin" replace /> : <ChatRoute currentUserId={profile?.id} />} />
+          <Route path="/chat/:userId" element={isAdmin ? <Navigate to="/admin" replace /> : <RouteSuspense><ChatRoute currentUserId={profile?.id} /></RouteSuspense>} />
 
           {/* OAuth redirect handler — handled by useEffect above */}
           <Route path="/auth/oauth2/redirect" element={null} />
         </Routes>
+        </Suspense>
       </main>
       {showFooter && <Footer isLanding={hasCosmicShell} onHeightChange={setFooterHeight} />}
     </div>
+  )
+}
+
+function CapsuleEditRoute({
+  onSubmit,
+}: {
+  onSubmit: (capsuleId: string, data: UpdateCapsulePayload) => Promise<Capsule>
+}) {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const [capsule, setCapsule] = useState<Capsule | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [routeError, setRouteError] = useState<ApiError | null>(null)
+
+  useEffect(() => {
+    const normalizedId = safeDecodeSegment(String(id || '')).trim()
+    if (!OBJECT_ID_RE.test(normalizedId)) {
+      setCapsule(null)
+      setRouteError({ status: 400, message: 'Invalid capsule id' })
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setLoading(true)
+    setRouteError(null)
+    getEditableCapsule(normalizedId)
+      .then((data) => {
+        if (!cancelled) setCapsule(data)
+      })
+      .catch((err: any) => {
+        if (!cancelled) {
+          setCapsule(null)
+          setRouteError(err)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  if (loading) {
+    return <div className="mx-auto max-w-2xl px-4 py-10 text-center text-sm text-muted-foreground">Loading capsule editor...</div>
+  }
+
+  if (!capsule) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
+        <div className="w-full max-w-3xl">
+          <EmptyState
+            icon={ShieldOff}
+            title={routeError?.status === 403 ? "You can't edit this capsule" : "Capsule not found"}
+            description={routeError?.message || 'Open your profile capsules and try again.'}
+            actionLabel="Back to profile"
+            onAction={() => navigate('/account')}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <LazyCreateCapsuleForm
+      mode="edit"
+      initialCapsule={capsule}
+      error={routeError}
+      onSubmit={(data) => onSubmit(capsule.id, data)}
+      onCancel={() => navigate(`/capsules/${capsule.id}`)}
+      onSubmitted={(updated) => {
+        setCapsule(updated)
+        navigate(`/capsules/${updated.id}`, { replace: true, state: { from: '/account' } })
+      }}
+    />
   )
 }
 
@@ -609,7 +750,7 @@ function ProfileRoute({ currentUserId }: { currentUserId?: string }) {
   })
 
   return (
-    <UserProfileView
+    <LazyUserProfileView
       user={userProfile}
       isOwnProfile={isOwn}
       capsulesCount={profileCapsules.length}
@@ -648,7 +789,7 @@ function AccountProfileRoute({ profile, capsules, onLoadCapsules }: { profile: U
   })
 
   return (
-    <UserProfileView
+    <LazyUserProfileView
       user={profile}
       isOwnProfile
       capsulesCount={capsules.length}
@@ -670,25 +811,25 @@ function ChatWorkspace({ userId, currentUserId }: { userId?: string; currentUser
   const navigate = useNavigate()
 
   return (
-    <section className="relative isolate box-border h-[calc(100svh-var(--tc-shell-offset,4rem))] overflow-hidden bg-[#050816] px-3 py-3 sm:px-4 sm:py-4 lg:px-8 lg:py-5">
+    <section className="relative isolate box-border h-[calc(100svh-var(--tc-shell-offset,4rem))] overflow-hidden bg-[#0c1f45] px-3 py-3 sm:px-4 sm:py-4 lg:px-8 lg:py-5">
       <div className="pointer-events-none absolute inset-0 -z-20" aria-hidden="true">
-        <SpaceBackgroundFrame className="opacity-[0.16] blur-[1px]" restoreSnapshot startSettled />
+        <SpaceBackgroundFrame className="opacity-[0.24] blur-[1px]" restoreSnapshot startSettled />
       </div>
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.74)_0%,rgba(3,8,20,0.82)_58%,rgba(3,8,22,0.9)_100%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(94,230,255,0.06)_0%,rgba(94,230,255,0)_42%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_76%_30%,rgba(124,92,255,0.08)_0%,rgba(124,92,255,0)_44%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,20,46,0.56)_0%,rgba(9,18,40,0.68)_58%,rgba(8,16,34,0.8)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,rgba(124,92,255,0.18)_0%,rgba(124,92,255,0)_42%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_24%,rgba(94,230,255,0.18)_0%,rgba(94,230,255,0)_40%)]" />
       </div>
 
       <div className="mx-auto h-full w-full max-w-7xl">
         <div className="flex h-full min-h-[440px] w-full overflow-hidden rounded-3xl border border-white/12 bg-slate-950/45 backdrop-blur-xl ring-1 ring-inset ring-white/5 shadow-[0_28px_80px_rgba(2,6,23,0.62)] sm:min-h-[520px]">
           <aside className={`${userId ? 'hidden md:flex' : 'flex'} w-full min-w-0 flex-col bg-[#071022]/45 md:w-[320px] md:border-r md:border-white/12 xl:w-[360px]`}>
-            <ChatList selectedUserId={userId} currentUserId={currentUserId} />
+            <LazyChatList selectedUserId={userId} currentUserId={currentUserId} />
           </aside>
 
           <div className={`${userId ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-[#050d20]/35`}>
             {userId ? (
-              <ChatWindow userId={userId} currentUserId={currentUserId} />
+              <LazyChatWindow userId={userId} currentUserId={currentUserId} />
             ) : (
               <div className="flex h-full flex-col items-center justify-center px-8 text-center">
                 <div className="mb-5 rounded-2xl border border-white/12 bg-white/[0.05] p-4 shadow-[0_0_36px_rgba(124,92,255,0.16)]">
@@ -707,11 +848,11 @@ function ChatWorkspace({ userId, currentUserId }: { userId?: string; currentUser
                     Start a new chat
                   </button>
                   <button
-                    onClick={() => navigate('/capsules')}
+                    onClick={() => navigate('/account')}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.04] px-5 py-2.5 text-sm font-semibold text-slate-100 transition-colors hover:bg-white/[0.09]"
                   >
                     <Sparkles className="h-4 w-4 text-cyan-200" />
-                    Open capsules
+                    Open profile capsules
                   </button>
                 </div>
               </div>

@@ -91,11 +91,25 @@ public class UserController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/suggestions")
+    public ResponseEntity<List<UserProfileResponse>> suggestions(Authentication auth) {
+        if (auth == null || !(auth.getPrincipal() instanceof User me)) {
+            return ResponseEntity.status(401).build();
+        }
+        List<UserProfileResponse> result = userService.suggestUsers(me.getId(), 12).stream()
+                .map(u -> toResponse(u, me.getId()))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(result);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<UserProfileResponse> getById(@PathVariable String id, Authentication auth) {
         String currentUserId = (auth != null && auth.getPrincipal() instanceof User u) ? u.getId() : null;
         try {
             User u = userService.getByIdOrUsername(id);
+            if (u.getRole() == User.Role.ADMIN) {
+                return ResponseEntity.notFound().build();
+            }
             return ResponseEntity.ok(toResponse(u, currentUserId));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.notFound().build();
@@ -128,7 +142,11 @@ public class UserController {
     public ResponseEntity<List<UserProfileResponse>> followers(@PathVariable String id, Authentication auth) {
         String currentUserId = (auth != null && auth.getPrincipal() instanceof User u) ? u.getId() : null;
         try {
-            List<UserProfileResponse> list = userService.followers(id).stream().map(u -> toResponse(u, currentUserId)).toList();
+            User target = userService.getByIdOrUsername(id);
+            if (target.getRole() == User.Role.ADMIN) {
+                return ResponseEntity.notFound().build();
+            }
+            List<UserProfileResponse> list = userService.followers(target.getId()).stream().map(u -> toResponse(u, currentUserId)).toList();
             return ResponseEntity.ok(list);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.notFound().build();
@@ -139,7 +157,11 @@ public class UserController {
     public ResponseEntity<List<UserProfileResponse>> following(@PathVariable String id, Authentication auth) {
         String currentUserId = (auth != null && auth.getPrincipal() instanceof User u) ? u.getId() : null;
         try {
-            List<UserProfileResponse> list = userService.following(id).stream().map(u -> toResponse(u, currentUserId)).toList();
+            User target = userService.getByIdOrUsername(id);
+            if (target.getRole() == User.Role.ADMIN) {
+                return ResponseEntity.notFound().build();
+            }
+            List<UserProfileResponse> list = userService.following(target.getId()).stream().map(u -> toResponse(u, currentUserId)).toList();
             return ResponseEntity.ok(list);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.notFound().build();
@@ -152,6 +174,9 @@ public class UserController {
         try {
             // Resolve user by id or username to get the actual user id
             User target = userService.getByIdOrUsername(id);
+            if (target.getRole() == User.Role.ADMIN) {
+                return ResponseEntity.notFound().build();
+            }
             List<CapsuleResponse> list = capsuleService.listUserCapsules(target.getId(), currentUserId);
             return ResponseEntity.ok(list);
         } catch (IllegalArgumentException ex) {

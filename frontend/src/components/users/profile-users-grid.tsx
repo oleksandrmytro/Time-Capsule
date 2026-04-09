@@ -11,8 +11,8 @@ interface ProfileUsersGridProps {
   emptyIcon: LucideIcon
   emptyTitle: string
   emptyDescription: string
-  onFollow?: (userId: string) => Promise<void>
-  onUnfollow?: (userId: string) => Promise<void>
+  onFollow?: (userId: string) => Promise<boolean | void>
+  onUnfollow?: (userId: string) => Promise<boolean | void>
   currentUserId?: string
 }
 

@@ -157,7 +157,22 @@ export interface CreateCapsulePayload {
   allowReactions: boolean
   tags?: string[] | null
   coverImageUrl?: string | null
-  media?: unknown
+  media?: MediaItem[] | null
+  location?: GeoPoint | null
+}
+
+export interface UpdateCapsulePayload {
+  title: string
+  body?: string | null
+  visibility: string
+  status: string
+  unlockAt: string
+  expiresAt?: string | null
+  allowComments: boolean
+  allowReactions: boolean
+  tags?: string[] | null
+  coverImageUrl?: string | null
+  media?: MediaItem[] | null
   location?: GeoPoint | null
 }
 
@@ -292,6 +307,10 @@ export async function searchUsers(query: string): Promise<UserPublic[]> {
   return apiRequest(`/api/users/search?q=${encodeURIComponent(query)}`, { method: 'GET' })
 }
 
+export async function getSuggestedUsers(): Promise<UserPublic[]> {
+  return apiRequest('/api/users/suggestions', { method: 'GET' })
+}
+
 /* ── Capsule API ───────────────────────── */
 
 // Створює нову капсулу з вказаними даними
@@ -304,6 +323,10 @@ export async function listMyCapsules(): Promise<Capsule[]> {
   return apiRequest('/api/capsules', { method: 'GET' })
 }
 
+export async function listPublicCapsules(): Promise<Capsule[]> {
+  return apiRequest('/api/capsules/public', { method: 'GET' })
+}
+
 export async function listCapsuleMapMarkers(): Promise<CapsuleMapMarker[]> {
   return apiRequest('/api/capsules/map', { method: 'GET' })
 }
@@ -314,6 +337,16 @@ export async function getCapsule(id: string): Promise<Capsule> {
   return apiRequest(`/api/capsules/${normalizedId}`, { method: 'GET' })
 }
 
+export async function getEditableCapsule(id: string): Promise<Capsule> {
+  const normalizedId = normalizeObjectId(id, 'capsule id')
+  return apiRequest(`/api/capsules/${normalizedId}/edit`, { method: 'GET' })
+}
+
+export async function updateCapsule(id: string, capsuleData: UpdateCapsulePayload): Promise<Capsule> {
+  const normalizedId = normalizeObjectId(id, 'capsule id')
+  return apiRequest(`/api/capsules/${normalizedId}`, { method: 'PUT', body: capsuleData })
+}
+
 // Розблоковує капсулу, якщо настав час розблокування
 export async function unlockCapsule(id: string): Promise<Capsule> {
   return apiRequest(`/api/capsules/${id}/unlock`, { method: 'POST' })
@@ -321,23 +354,8 @@ export async function unlockCapsule(id: string): Promise<Capsule> {
 
 /* ── Media API ─────────────────────────── */
 
-export async function uploadMedia(capsuleId: string, file: File): Promise<MediaItem> {
-  const formData = new FormData()
-  formData.append('file', file)
-  const base = getApiBase()
-  const res = await fetch(`${base}/api/capsules/${capsuleId}/media`, {
-    method: 'POST',
-    credentials: 'include',
-    body: formData,
-  })
-  const text = await res.text()
-  let data: any
-  try { data = text ? JSON.parse(text) : null } catch { data = text }
-  if (!res.ok) {
-    const message = data?.message || data?.error || text || `HTTP ${res.status}`
-    throw { status: res.status, message } as ApiError
-  }
-  return data
+export async function uploadMedia(_capsuleId: string, file: File): Promise<MediaItem> {
+  return uploadCapsuleAttachment(file)
 }
 
 /* ── Cover Image Upload ─────────────────── */
@@ -351,6 +369,25 @@ export async function uploadCoverImage(file: File): Promise<string> {
   formData.append('file', file)
   const base = getApiBase()
   const res = await fetch(`${base}/api/media/cover`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : null } catch { data = text }
+  if (!res.ok) {
+    const message = data?.message || data?.error || text || `HTTP ${res.status}`
+    throw { status: res.status, message } as ApiError
+  }
+  return typeof data === 'string' ? data : (data?.url ?? data?.imageUrl ?? '')
+}
+
+export async function uploadAvatarImage(file: File): Promise<string> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const base = getApiBase()
+  const res = await fetch(`${base}/api/media/avatar`, {
     method: 'POST',
     credentials: 'include',
     body: formData,

@@ -19,7 +19,12 @@ import org.springframework.util.StringUtils;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 public class UserService {
@@ -55,13 +60,22 @@ public class UserService {
     public List<User> searchUsers(String query) {
         String q = query == null ? "" : query.trim();
         Query mongoQuery = new Query();
+        Criteria publicUserCriteria = new Criteria().andOperator(
+                Criteria.where("role").ne(User.Role.ADMIN.getDbValue()),
+                Criteria.where("deletedAt").is(null),
+                Criteria.where("enabled").is(true)
+        );
         if (StringUtils.hasText(q)) {
-            mongoQuery.addCriteria(new Criteria().orOperator(
-                    Criteria.where("username").regex(q, "i"),
-                    Criteria.where("email").regex(q, "i")
+            mongoQuery.addCriteria(new Criteria().andOperator(
+                    publicUserCriteria,
+                    new Criteria().orOperator(
+                            Criteria.where("username").regex(q, "i"),
+                            Criteria.where("email").regex(q, "i")
+                    )
             ));
+        } else {
+            mongoQuery.addCriteria(publicUserCriteria);
         }
-        mongoQuery.limit(20);
         return mongoTemplate.find(mongoQuery, User.class);
     }
 
@@ -164,6 +178,7 @@ public class UserService {
         ObjectId target = new ObjectId(userId);
         return followRepository.findByUserIdAndDeletedAtIsNull(target).stream()
                 .map(f -> getById(f.getFollowerId().toHexString()))
+                .filter(this::isPublicUser)
                 .toList();
     }
 
@@ -171,15 +186,65 @@ public class UserService {
         ObjectId follower = new ObjectId(userId);
         return followRepository.findByFollowerIdAndDeletedAtIsNull(follower).stream()
                 .map(f -> getById(f.getUserId().toHexString()))
+                .filter(this::isPublicUser)
+                .toList();
+    }
+
+    public List<User> suggestUsers(String userId, int limit) {
+        if (!StringUtils.hasText(userId)) {
+            return List.of();
+        }
+
+        int resolvedLimit = Math.max(1, Math.min(limit, 24));
+        List<User> directFollowing = following(userId);
+        List<User> directFollowers = followers(userId);
+
+        Set<String> excludedIds = new LinkedHashSet<>();
+        excludedIds.add(userId);
+        directFollowing.forEach(user -> excludedIds.add(user.getId()));
+
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, User> candidates = new LinkedHashMap<>();
+
+        for (User relation : directFollowing) {
+            collectSuggestedUsersFromRelation(relation, excludedIds, scores, candidates, 3, true);
+            collectSuggestedUsersFromRelation(relation, excludedIds, scores, candidates, 2, false);
+        }
+
+        for (User relation : directFollowers) {
+            collectSuggestedUsersFromRelation(relation, excludedIds, scores, candidates, 1, false);
+        }
+
+        if (candidates.isEmpty()) {
+            return searchUsers("").stream()
+                    .filter(user -> !excludedIds.contains(user.getId()))
+                    .limit(resolvedLimit)
+                    .toList();
+        }
+
+        return candidates.values().stream()
+                .sorted(Comparator
+                        .comparingInt((User user) -> scores.getOrDefault(user.getId(), 0))
+                        .reversed()
+                        .thenComparing(user -> user.getUsernameField() != null ? user.getUsernameField().toLowerCase() : user.getId()))
+                .limit(resolvedLimit)
                 .toList();
     }
 
     public long followersCount(String userId) {
-        return followRepository.countByUserIdAndDeletedAtIsNull(new ObjectId(userId));
+        ObjectId target = new ObjectId(userId);
+        return followRepository.findByUserIdAndDeletedAtIsNull(target).stream()
+                .map(f -> getById(f.getFollowerId().toHexString()))
+                .filter(this::isPublicUser)
+                .count();
     }
 
     public long followingCount(String userId) {
-        return followRepository.countByFollowerIdAndDeletedAtIsNull(new ObjectId(userId));
+        ObjectId follower = new ObjectId(userId);
+        return followRepository.findByFollowerIdAndDeletedAtIsNull(follower).stream()
+                .map(f -> getById(f.getUserId().toHexString()))
+                .filter(this::isPublicUser)
+                .count();
     }
 
     public boolean isFollowing(String targetUserId, String followerId) {
@@ -312,5 +377,30 @@ public class UserService {
     private String generateCode() {
         int code = (int) (Math.random() * 900_000) + 100_000;
         return Integer.toString(code);
+    }
+
+    private void collectSuggestedUsersFromRelation(
+            User relation,
+            Set<String> excludedIds,
+            Map<String, Integer> scores,
+            Map<String, User> candidates,
+            int weight,
+            boolean followersOfRelation
+    ) {
+        List<User> neighbors = followersOfRelation ? followers(relation.getId()) : following(relation.getId());
+        for (User candidate : neighbors) {
+            if (!isPublicUser(candidate) || excludedIds.contains(candidate.getId())) {
+                continue;
+            }
+            candidates.putIfAbsent(candidate.getId(), candidate);
+            scores.merge(candidate.getId(), weight, Integer::sum);
+        }
+    }
+
+    private boolean isPublicUser(User user) {
+        return user != null
+                && user.getRole() != User.Role.ADMIN
+                && user.getDeletedAt() == null
+                && user.isEnabled();
     }
 }

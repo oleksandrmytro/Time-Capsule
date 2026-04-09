@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Share2, Search, Check, Loader2, Send } from "lucide-react"
 import { type UserData } from "@/components/users/user-card"
 import { shareCapsule } from "@/services/api"
+import { resolveAssetUrl } from "@/lib/asset-url"
 
 interface ShareCapsuleDialogProps {
   capsuleId: string
@@ -90,7 +91,7 @@ export function ShareCapsuleDialog({
                         }`}
                       >
                         <Avatar className="h-9 w-9 border border-white/12">
-                          <AvatarImage src={user.avatar} />
+                          <AvatarImage src={resolveAssetUrl(user.avatar)} />
                           <AvatarFallback className="bg-[#12213f] text-slate-200">
                             {user.displayName.slice(0, 2).toUpperCase()}
                           </AvatarFallback>

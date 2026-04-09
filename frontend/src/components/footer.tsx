@@ -13,11 +13,11 @@ export function Footer({ onHome, isLanding = false, onHeightChange }: FooterProp
   const footerRef = useRef<HTMLElement | null>(null)
   const useDarkStyle = isLanding
   const footerClass = useDarkStyle
-    ? "border-t border-white/10 bg-[#040914]/92 px-4 py-2.5 backdrop-blur-md lg:px-8"
-    : "border-t border-white/10 bg-[#040914]/88 px-4 py-2.5 backdrop-blur-md lg:px-8"
+    ? "border-t border-cyan-200/12 bg-[#1a3f73]/82 px-4 py-2.5 backdrop-blur-xl lg:px-8"
+    : "border-t border-cyan-200/12 bg-[#1a3f73]/78 px-4 py-2.5 backdrop-blur-xl lg:px-8"
   const logoIconClass = "flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-[linear-gradient(135deg,rgba(124,92,255,0.5),rgba(94,230,255,0.35))]"
   const logoTextClass = "font-serif text-lg font-bold text-slate-100"
-  const captionClass = "text-xs text-slate-400 sm:text-sm"
+  const captionClass = "text-xs text-slate-300 sm:text-sm"
 
   const handleHome = () => {
     if (onHome) onHome()

@@ -27,6 +27,7 @@ import {
   type MediaMimeType,
 } from "@/lib/media-types"
 import { openNativeFiles } from "@/lib/native-file-picker"
+import { resolveAssetUrl } from "@/lib/asset-url"
 import "./chat-window.css"
 
 interface ChatWindowProps {
@@ -390,12 +391,12 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-950/18">
-      <div className="flex items-center gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3">
+    <div className="flex h-full min-h-0 flex-col bg-[#15305e]/34">
+      <div className="flex items-center gap-3 border-b border-cyan-200/10 bg-[#17335f]/42 px-4 py-3">
         <Button
           variant="ghost"
           size="sm"
-          className="shrink-0 gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 text-slate-300 hover:bg-white/[0.1] hover:text-slate-100"
+          className="shrink-0 gap-1.5 rounded-lg border border-cyan-200/12 bg-white/[0.06] px-2.5 text-slate-200 hover:bg-white/[0.12] hover:text-white"
           onClick={() => navigate("/chat")}
         >
           <ArrowLeft className="h-4 w-4" />
@@ -406,7 +407,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
           className="relative shrink-0 cursor-pointer border-none bg-transparent p-0"
         >
           <Avatar className="h-10 w-10">
-            <AvatarImage src={user.avatar} />
+            <AvatarImage src={resolveAssetUrl(user.avatar)} />
             <AvatarFallback className="bg-violet-400/18 text-cyan-100">
               {user.displayName.slice(0, 2).toUpperCase()}
             </AvatarFallback>
@@ -424,7 +425,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-slate-300 hover:bg-white/10 hover:text-slate-100">
+              <Button variant="ghost" size="icon" className="text-slate-300 hover:bg-white/10 hover:text-white">
               <MoreVertical className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
@@ -442,7 +443,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Avatar className="mb-3 h-16 w-16">
-              <AvatarImage src={user.avatar} />
+              <AvatarImage src={resolveAssetUrl(user.avatar)} />
               <AvatarFallback className="bg-violet-400/18 text-xl text-cyan-100">
                 {user.displayName.slice(0, 2).toUpperCase()}
               </AvatarFallback>
@@ -455,9 +456,9 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
             {groupedMessages.map((group) => (
               <div key={group.date} className="flex flex-col gap-1">
                 <div className="flex items-center gap-3 py-2">
-                  <div className="h-px flex-1 bg-white/10" />
+                    <div className="h-px flex-1 bg-cyan-200/10" />
                   <span className="text-xs text-slate-400">{formatDate(group.date)}</span>
-                  <div className="h-px flex-1 bg-white/10" />
+                    <div className="h-px flex-1 bg-cyan-200/10" />
                 </div>
 
                 {group.messages.map((message) => {
@@ -473,13 +474,13 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
                       className={`group/msg flex items-end gap-1.5 ${message.fromMe ? "justify-end" : "justify-start"}`}
                     >
                       {message.fromMe && messageType !== "capsule_share" && (
-                        <button
-                          type="button"
+                          <button
+                            type="button"
                           onClick={() => {
                             setReplyTo(message)
                             inputRef.current?.focus()
                           }}
-                          className="mb-1 shrink-0 rounded-full p-1.5 text-slate-500 opacity-0 transition-all hover:bg-white/10 hover:text-cyan-200 group-hover/msg:opacity-100"
+                            className="mb-1 shrink-0 rounded-full p-1.5 text-slate-500 opacity-0 transition-all hover:bg-white/10 hover:text-cyan-100 group-hover/msg:opacity-100"
                         >
                           <Reply className="h-3.5 w-3.5" />
                         </button>
@@ -501,12 +502,12 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
                           </p>
                         </button>
                       ) : (
-                        <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 transition-[box-shadow,transform] duration-300 ${message.fromMe ? "border border-violet-300/28 bg-violet-500/80 text-slate-50 shadow-[0_8px_24px_rgba(86,95,220,0.22)]" : "border border-white/10 bg-white/[0.05] text-slate-100"} ${highlightedMessageId === message.id ? "message-jump-highlight ring-2 ring-cyan-300/60 shadow-[0_0_0_4px_rgba(94,230,255,0.14)]" : ""}`}>
+                        <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 transition-[box-shadow,transform] duration-300 ${message.fromMe ? "border border-violet-200/24 bg-[linear-gradient(160deg,rgba(92,129,255,0.92)_0%,rgba(118,102,255,0.88)_100%)] text-slate-50 shadow-[0_12px_28px_rgba(77,90,214,0.22)]" : "border border-cyan-200/12 bg-[#17335f]/62 text-slate-100"} ${highlightedMessageId === message.id ? "message-jump-highlight ring-2 ring-cyan-300/60 shadow-[0_0_0_4px_rgba(94,230,255,0.14)]" : ""}`}>
                           {parent && (
                             <button
                               type="button"
                               onClick={() => scrollToMessage(parent.id)}
-                              className={`mb-2 flex w-full items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${message.fromMe ? "bg-white/16 hover:bg-white/24" : "bg-black/30 hover:bg-black/45"}`}
+                              className={`mb-2 flex w-full items-start gap-1.5 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${message.fromMe ? "bg-white/16 hover:bg-white/24" : "bg-[#0d1935]/56 hover:bg-[#0d1935]/76"}`}
                             >
                               <CornerDownRight className="mt-0.5 h-3 w-3 shrink-0 opacity-70" />
                               <span className="line-clamp-2 break-words [overflow-wrap:anywhere] opacity-80">{getReplyPreviewText(parent)}</span>
@@ -549,7 +550,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
                             setReplyTo(message)
                             inputRef.current?.focus()
                           }}
-                          className="mb-1 shrink-0 rounded-full p-1.5 text-slate-500 opacity-0 transition-all hover:bg-white/10 hover:text-cyan-200 group-hover/msg:opacity-100"
+                          className="mb-1 shrink-0 rounded-full p-1.5 text-slate-500 opacity-0 transition-all hover:bg-white/10 hover:text-cyan-100 group-hover/msg:opacity-100"
                         >
                           <Reply className="h-3.5 w-3.5" />
                         </button>
@@ -563,7 +564,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-white/10 bg-slate-950/45 p-3 sm:p-4">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2 border-t border-cyan-200/10 bg-[#17335f]/46 p-3 sm:p-4">
         <input
           ref={fileInputRef}
           type="file"
@@ -596,7 +597,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
         )}
 
         {selectedFile && (
-          <div className="flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2">
+          <div className="flex items-start gap-2 rounded-lg border border-cyan-200/10 bg-white/[0.08] px-3 py-2">
             {previewUrl && isSupportedImageMimeType(selectedFile.type) && (
               <img src={previewUrl} alt="attachment preview" className="h-12 w-12 rounded-md object-cover" />
             )}
@@ -619,7 +620,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] text-slate-100 placeholder:text-slate-400 focus-visible:border-violet-300/55 focus-visible:ring-1 focus-visible:ring-violet-300/60"
+            className="flex-1 rounded-xl border border-cyan-200/12 bg-white/[0.08] text-slate-100 placeholder:text-slate-400 focus-visible:border-cyan-200/40 focus-visible:ring-1 focus-visible:ring-cyan-200/35"
             disabled={isSending || isUploading}
           />
           <Button
@@ -628,7 +629,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
             size="icon"
             onClick={() => { void openAttachmentPicker() }}
             disabled={isSending || isUploading}
-            className="rounded-xl border-white/12 bg-white/[0.04] text-slate-200 hover:bg-white/[0.1] hover:text-slate-50"
+            className="rounded-xl border-cyan-200/12 bg-white/[0.08] text-slate-200 hover:bg-white/[0.14] hover:text-white"
           >
             <Paperclip className="h-4 w-4" />
           </Button>
@@ -636,7 +637,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
             type="submit"
             size="icon"
             disabled={(!inputValue.trim() && !selectedFile) || isSending || isUploading}
-            className="rounded-xl border border-violet-300/28 bg-violet-500/85 text-slate-50 shadow-[0_10px_24px_rgba(84,99,229,0.26)] hover:bg-violet-500"
+            className="rounded-xl border border-cyan-200/18 bg-[linear-gradient(160deg,rgba(72,201,255,0.95)_0%,rgba(99,157,255,0.92)_100%)] text-slate-950 shadow-[0_10px_24px_rgba(70,184,255,0.22)] hover:brightness-105"
           >
             {isSending || isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>

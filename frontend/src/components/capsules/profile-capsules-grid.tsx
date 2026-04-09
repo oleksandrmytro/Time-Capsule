@@ -98,7 +98,7 @@ export function ProfileCapsulesGrid({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={`flex min-h-0 flex-col gap-4 ${viewMode === "map" ? "h-full flex-1" : ""}`}>
       <div className="flex items-center justify-between gap-3 px-1">
         <div className="flex flex-col gap-0.5">
           <p className="text-base font-semibold text-slate-100">
@@ -175,14 +175,16 @@ export function ProfileCapsulesGrid({
       )}
 
       {viewMode === "map" && mapMarkers.length > 0 && (
-        <CapsulesMapView
-          embedded
-          hideHeader
-          markersOverride={mapMarkers}
-          fromPath={location.pathname}
-          initialSearch={mapSearchSeed}
-          onOpenCapsule={(marker) => navigate(`/capsules/${marker.id}`, { state: { from: location.pathname } })}
-        />
+        <div className="flex h-full min-h-0 w-full flex-1">
+          <CapsulesMapView
+            embedded
+            hideHeader
+            markersOverride={mapMarkers}
+            fromPath={location.pathname}
+            initialSearch={mapSearchSeed}
+            onOpenCapsule={(marker) => navigate(`/capsules/${marker.id}`, { state: { from: location.pathname } })}
+          />
+        </div>
       )}
 
       {viewMode === "map" && mapMarkers.length === 0 && (
@@ -213,7 +215,7 @@ function CapsuleGridItem({ capsule, onClick, isFocused = false }: { capsule: Cap
   return (
     <button
       onClick={onClick}
-      className={`group relative w-full overflow-hidden rounded-2xl border p-4 text-left shadow-[0_22px_50px_rgba(2,6,23,0.45)] transition-all duration-300 hover:-translate-y-1 hover:bg-slate-900/70 ${
+      className={`group relative w-full overflow-hidden rounded-2xl border p-3 text-left shadow-[0_22px_50px_rgba(2,6,23,0.45)] transition-all duration-300 hover:-translate-y-1 hover:bg-slate-900/70 sm:p-4 ${
         isFocused
           ? "border-cyan-200/55 bg-slate-900/72 shadow-[0_0_0_1px_rgba(94,230,255,0.45),0_22px_50px_rgba(2,6,23,0.45)]"
           : "border-white/14 bg-slate-950/65 hover:border-cyan-200/35"
@@ -234,12 +236,12 @@ function CapsuleGridItem({ capsule, onClick, isFocused = false }: { capsule: Cap
           <img
             src={coverSrc}
             alt={capsule.title}
-            className="h-36 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105 sm:h-32 lg:h-36"
             loading="lazy"
             onError={() => setCoverSrc("/static/tags/default.jpg")}
           />
         ) : (
-          <div className="flex h-36 items-center justify-center">
+          <div className="flex h-28 items-center justify-center sm:h-32 lg:h-36">
             <Timer className="h-9 w-9 text-slate-500" />
           </div>
         )}
@@ -300,7 +302,7 @@ function CapsuleListItem({ capsule, onClick, isFocused = false }: { capsule: Cap
           : "border-white/14 bg-slate-950/60 hover:border-cyan-300/35"
       }`}
     >
-      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/12 bg-slate-900/55">
+      <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/12 bg-slate-900/55 sm:h-14 sm:w-14">
         {coverSrc ? (
           <img
             src={coverSrc}

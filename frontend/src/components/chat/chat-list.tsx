@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Search, Loader2, MessageCircle } from "lucide-react"
 import { getConversations, type ChatConversation, getFollowing, type UserPublic } from "@/services/api"
+import { resolveAssetUrl } from "@/lib/asset-url"
 
 interface ChatListProps {
   selectedUserId?: string
@@ -54,8 +55,8 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
   const showEmptyConversations = filteredConvs.length === 0 && startable.length === 0
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-950/30">
-      <div className="border-b border-white/10 p-4 sm:p-5">
+    <div className="flex h-full min-h-0 flex-col bg-[#15305e]/48">
+      <div className="border-b border-cyan-200/10 bg-[#17335f]/42 p-4 sm:p-5">
         <h2 className="mb-3 font-serif text-lg font-semibold text-slate-100">Messages</h2>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -63,7 +64,7 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
             placeholder="Search conversations..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-10 rounded-xl border border-white/10 bg-white/[0.04] pl-9 text-slate-100 placeholder:text-slate-400 focus-visible:border-violet-300/55 focus-visible:ring-1 focus-visible:ring-violet-300/60"
+            className="h-10 rounded-xl border border-cyan-200/12 bg-white/[0.08] pl-9 text-slate-100 placeholder:text-slate-400 focus-visible:border-cyan-200/40 focus-visible:ring-1 focus-visible:ring-cyan-200/35"
           />
         </div>
       </div>
@@ -82,11 +83,11 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
               <button
                 key={conv.id}
                 onClick={() => navigate(`/chat/${conv.user.id}`)}
-                className={`group flex w-full items-start gap-3 border-b border-white/6 bg-transparent px-4 py-3.5 text-left transition-colors ${selectedUserId === conv.user.id ? "bg-violet-500/14 ring-1 ring-inset ring-violet-300/35" : "hover:bg-white/[0.05]"}`}
+                className={`group flex w-full items-start gap-3 border-b border-cyan-200/8 bg-transparent px-4 py-3.5 text-left transition-colors ${selectedUserId === conv.user.id ? "bg-cyan-300/16 ring-1 ring-inset ring-cyan-200/28" : "hover:bg-white/[0.08]"}`}
               >
                 <div className="relative shrink-0">
-                  <Avatar className="h-11 w-11 border border-white/10">
-                    <AvatarImage src={conv.user.avatar} />
+                    <Avatar className="h-11 w-11 border border-cyan-200/14">
+                    <AvatarImage src={resolveAssetUrl(conv.user.avatar)} />
                     <AvatarFallback className="bg-violet-400/18 text-cyan-100">
                       {conv.user.displayName.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
@@ -112,17 +113,17 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
 
             {startable.length > 0 && (
               <div className="p-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Start chat with followers</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">Start chat with followers</p>
                 <div className="flex flex-col gap-2">
                   {startable.map(u => (
                     <button
                       key={u.id}
                       onClick={() => navigate(`/chat/${u.id}`)}
-                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-white/[0.06]"
+                      className="flex items-center gap-3 rounded-xl border border-cyan-200/12 bg-white/[0.06] px-3 py-2.5 text-left transition-colors hover:border-cyan-200/34 hover:bg-white/[0.1]"
                     >
                       <div className="relative shrink-0">
                         <Avatar className="h-9 w-9 border border-white/10">
-                          <AvatarImage src={u.avatar} />
+                          <AvatarImage src={resolveAssetUrl(u.avatar)} />
                           <AvatarFallback className="bg-violet-400/18 text-cyan-100">
                             {u.displayName.slice(0, 2).toUpperCase()}
                           </AvatarFallback>

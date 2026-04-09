@@ -35,5 +35,24 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+
+          if (id.includes('leaflet') || id.includes('markercluster')) {
+            return 'map-vendor'
+          }
+          if (id.includes('three') || id.includes('cesium')) {
+            return '3d-vendor'
+          }
+          if (id.includes('@stomp') || id.includes('sockjs-client')) {
+            return 'realtime-vendor'
+          }
+
+          return 'vendor'
+        },
+      },
+    },
   },
 })

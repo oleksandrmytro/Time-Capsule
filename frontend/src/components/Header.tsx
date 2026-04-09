@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Menu, X, Timer, User, LogOut, Plus, Search, MessageCircle, CalendarDays, Shield, ChevronDown, Settings } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { resolveAssetUrl } from '@/lib/asset-url'
 
 interface HeaderProfileInfo {
   username?: string
@@ -25,7 +26,7 @@ export default function Header({ isAuthenticated, onLogout, profileRole, profile
   const profileLabel = profile?.displayName || profile?.username || 'Account'
   const profileInitials = profileLabel.slice(0, 2).toUpperCase()
   const headerShellClass = isLanding
-    ? 'fixed inset-x-0 top-0 z-50 w-full bg-[#050816]/26 backdrop-blur-md'
+    ? 'fixed inset-x-0 top-0 z-50 w-full border-b border-cyan-200/12 bg-[#163567]/72 backdrop-blur-xl'
     : 'sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl'
   const logoIconClass = isLanding
     ? 'flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-[linear-gradient(135deg,rgba(124,92,255,0.5),rgba(94,230,255,0.35))]'
@@ -34,10 +35,10 @@ export default function Header({ isAuthenticated, onLogout, profileRole, profile
     ? 'font-serif text-xl font-bold tracking-tight text-slate-100'
     : 'font-serif text-xl font-bold tracking-tight text-foreground'
   const mobileToggleClass = isLanding
-    ? 'xl:hidden rounded-lg border border-white/12 bg-black/30 p-2 text-slate-100 hover:bg-black/45'
+    ? 'xl:hidden rounded-lg border border-cyan-200/18 bg-[#1e447e]/70 p-2 text-slate-100 hover:bg-[#2c5ca8]/78'
     : 'xl:hidden p-2 hover:bg-secondary rounded-lg bg-transparent border-none shadow-none'
   const mobileMenuClass = isLanding
-    ? 'xl:hidden bg-[#050816]/42 backdrop-blur-lg'
+    ? 'xl:hidden border-t border-cyan-200/12 bg-[#163567]/84 backdrop-blur-xl'
     : 'xl:hidden border-t border-border/50 bg-background'
 
   const go = (path: string) => {
@@ -73,6 +74,7 @@ export default function Header({ isAuthenticated, onLogout, profileRole, profile
             </>
           ) : (
             <>
+              <NavBtn onClick={() => go('/discover')} icon={Timer} landingMode={isLanding}>Discover Users</NavBtn>
               <NavBtn onClick={() => go('/login')} landingMode={isLanding}>Login</NavBtn>
               <NavBtn onClick={() => go('/register')} landingMode={isLanding}>Register</NavBtn>
             </>
@@ -107,6 +109,7 @@ export default function Header({ isAuthenticated, onLogout, profileRole, profile
               </>
             ) : (
               <>
+                <MobileBtn onClick={() => go('/discover')} icon={Timer} landingMode={isLanding} delayMs={20}>Discover Users</MobileBtn>
                 <MobileBtn onClick={() => go('/login')} landingMode={isLanding} delayMs={20}>Login</MobileBtn>
                 <MobileBtn onClick={() => go('/register')} landingMode={isLanding} delayMs={80}>Register</MobileBtn>
               </>
@@ -140,7 +143,7 @@ function AccountDropdown({
     ? `ml-1 inline-flex items-center gap-2 rounded-xl border border-white/12 px-2.5 py-1.5 text-slate-100 transition-all duration-200 ${open ? 'bg-white/16 ring-1 ring-white/20' : 'bg-white/6 hover:bg-white/12'}`
     : `ml-1 inline-flex items-center gap-2 rounded-xl border border-border/70 px-2.5 py-1.5 text-foreground transition-all duration-200 ${open ? 'bg-secondary/80 ring-1 ring-border' : 'bg-background hover:bg-secondary/70'}`
   const menuClass = landingMode
-    ? 'w-56 border-white/12 bg-[#08122c]/96 text-slate-100'
+    ? 'w-56 border-cyan-200/14 bg-[#17335f]/96 text-slate-100 shadow-[0_24px_60px_rgba(7,21,45,0.48)]'
     : 'w-56'
   const itemClass = landingMode
     ? 'gap-2 text-slate-200 focus:bg-white/10 focus:text-slate-50'
@@ -151,7 +154,7 @@ function AccountDropdown({
       <DropdownMenuTrigger asChild>
         <button type="button" className={triggerClass}>
           <Avatar className="h-8 w-8 border border-white/20">
-            <AvatarImage src={avatarUrl} alt={profileLabel} />
+            <AvatarImage src={resolveAssetUrl(avatarUrl)} alt={profileLabel} />
             <AvatarFallback className={landingMode ? 'bg-white/12 text-slate-100 text-xs font-semibold' : 'text-xs font-semibold'}>
               {profileInitials}
             </AvatarFallback>

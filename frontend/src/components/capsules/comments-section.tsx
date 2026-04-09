@@ -20,6 +20,7 @@ import {
   CornerDownRight,
 } from "lucide-react"
 import { getComments, addComment, deleteComment, updateComment, type CommentData } from "@/services/api"
+import { resolveAssetUrl } from "@/lib/asset-url"
 
 interface CommentsSectionProps {
   capsuleId: string
@@ -276,7 +277,7 @@ export function CommentsSection({
               >
                 <div className="flex items-start gap-3">
                   <Avatar className="h-9 w-9 shrink-0 border border-white/12">
-                    <AvatarImage src={comment.avatarUrl} alt={comment.username} />
+                    <AvatarImage src={resolveAssetUrl(comment.avatarUrl)} alt={comment.username} />
                     <AvatarFallback className="bg-cyan-300/16 text-xs font-bold text-cyan-100">
                       {(comment.username || "U").slice(0, 2).toUpperCase()}
                     </AvatarFallback>

@@ -2,6 +2,7 @@ package com.oleksandrmytro.timecapsule.controllers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oleksandrmytro.timecapsule.dto.RefreshTokenRequest;
+import com.oleksandrmytro.timecapsule.repositories.AdminAuditLogRepository;
 import com.oleksandrmytro.timecapsule.responses.LoginResponse;
 import com.oleksandrmytro.timecapsule.services.AuthenticationService;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,9 @@ class AuthenticationControllerTest {
 
     @MockBean
     private UserDetailsService userDetailsService;
+
+    @MockBean
+    private AdminAuditLogRepository adminAuditLogRepository;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 

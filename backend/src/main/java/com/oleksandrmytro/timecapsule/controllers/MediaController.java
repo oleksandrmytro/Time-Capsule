@@ -22,6 +22,7 @@ import java.util.UUID;
 public class MediaController {
 
     private static final long COVER_MAX_SIZE = 10L * 1024 * 1024; // 10 MB
+    private static final long AVATAR_MAX_SIZE = 10L * 1024 * 1024; // 10 MB
     private static final long CHAT_MEDIA_MAX_SIZE = 50L * 1024 * 1024; // 50 MB
     private static final long TAG_IMAGE_MAX_SIZE = 10L * 1024 * 1024; // 10 MB
     private static final long CAPSULE_MEDIA_MAX_SIZE = 50L * 1024 * 1024; // 50 MB
@@ -60,6 +61,31 @@ public class MediaController {
 
         String url = "/static/covers/" + filename;
         return ResponseEntity.ok(Map.of("url", url));
+    }
+
+    @PostMapping(value = "/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, String>> uploadAvatar(
+            @RequestParam("file") MultipartFile file) throws IOException {
+
+        String contentType = normalizeContentType(file);
+        if (contentType == null || !ALLOWED_COVER_TYPES.contains(contentType)) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Only JPEG, PNG, GIF, WebP allowed"));
+        }
+        if (file.getSize() > AVATAR_MAX_SIZE) {
+            return ResponseEntity.badRequest().body(Map.of("error", "File too large (max 10MB)"));
+        }
+
+        String ext = extensionFrom(contentType, ".jpg");
+        String filename = UUID.randomUUID() + ext;
+
+        Path dir = Path.of(System.getProperty("user.dir"), "uploads", "avatars");
+        Files.createDirectories(dir);
+        Path target = dir.resolve(filename);
+        try (InputStream in = file.getInputStream()) {
+            Files.copy(in, target);
+        }
+
+        return ResponseEntity.ok(Map.of("url", "/uploads/avatars/" + filename));
     }
 
     @PostMapping(value = "/chat-attachment", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

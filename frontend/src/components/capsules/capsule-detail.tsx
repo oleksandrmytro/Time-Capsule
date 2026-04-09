@@ -22,6 +22,7 @@ import {
   Download,
   Globe,
   Link2,
+  Pencil,
 } from "lucide-react"
 import { getApiBase, getUserProfile, type Capsule, type ApiError, type MediaItem, type UserProfile } from "@/services/api"
 import type { UserData } from "@/components/users/user-card"
@@ -35,6 +36,8 @@ interface CapsuleDetailProps {
   onRefreshFollowing?: () => void
   isAuthenticated?: boolean
   currentUserId?: string
+  canEdit?: boolean
+  onEdit?: (id: string) => void
 }
 
 type AttachmentLike = {
@@ -128,6 +131,8 @@ export function CapsuleDetail({
   onRefreshFollowing,
   isAuthenticated = false,
   currentUserId,
+  canEdit = false,
+  onEdit,
 }: CapsuleDetailProps) {
   const [coverSrc, setCoverSrc] = useState(capsule.coverImageUrl ?? "")
   const [copied, setCopied] = useState(false)
@@ -333,14 +338,14 @@ export function CapsuleDetail({
   }
 
   return (
-    <section className="relative isolate overflow-hidden bg-[#050816] px-4 py-6 lg:px-8 lg:py-8">
+    <section className="relative isolate min-h-[calc(100svh-var(--tc-shell-offset,4rem))] overflow-hidden bg-[#0c1f45] px-4 py-6 lg:px-8 lg:py-8">
       <div className="pointer-events-none absolute inset-0 -z-20" aria-hidden="true">
         <SpaceBackgroundFrame className="opacity-[0.16] blur-[1px]" restoreSnapshot startSettled />
       </div>
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,6,16,0.72)_0%,rgba(3,8,20,0.84)_58%,rgba(3,8,22,0.92)_100%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_18%,rgba(94,230,255,0.08)_0%,rgba(94,230,255,0)_42%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_76%_24%,rgba(124,92,255,0.12)_0%,rgba(124,92,255,0)_44%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,20,46,0.58)_0%,rgba(9,18,40,0.7)_58%,rgba(8,16,34,0.82)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_18%,rgba(94,230,255,0.16)_0%,rgba(94,230,255,0)_42%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_76%_24%,rgba(124,92,255,0.18)_0%,rgba(124,92,255,0)_44%)]" />
       </div>
 
       <div className="relative mx-auto max-w-5xl">
@@ -365,6 +370,17 @@ export function CapsuleDetail({
             >
               <MapPin className="h-3.5 w-3.5" /> Show on map
             </Button>
+
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 rounded-lg border border-emerald-300/42 bg-emerald-400/22 text-emerald-50 shadow-[0_8px_20px_rgba(16,185,129,0.16)] hover:bg-emerald-400/30 hover:shadow-[0_10px_24px_rgba(16,185,129,0.22)]"
+                onClick={() => onEdit?.(capsule.id)}
+              >
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </Button>
+            )}
 
             <Button
               variant="ghost"
@@ -403,7 +419,7 @@ export function CapsuleDetail({
           </div>
         </div>
 
-        <article className="overflow-hidden rounded-3xl border border-white/12 bg-slate-900/50 shadow-[0_34px_90px_rgba(2,6,23,0.62)] backdrop-blur-xl">
+        <article className="overflow-hidden rounded-3xl border border-cyan-200/12 bg-[#10224a]/66 shadow-[0_34px_90px_rgba(6,18,42,0.46)] backdrop-blur-xl">
           <div className="relative">
             {coverSrc ? (
               <div className="relative h-[260px] overflow-hidden border-b border-white/10 sm:h-[360px]">
@@ -488,7 +504,7 @@ export function CapsuleDetail({
             </div>
           ) : capsule.isLocked ? (
             <div className="p-5 sm:p-7">
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-white/14 bg-slate-950/48 py-12 text-center">
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-cyan-200/14 bg-[#0f1f42]/68 py-12 text-center">
                 <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-violet-300/25 bg-violet-400/12">
                   <Lock className="h-8 w-8 text-violet-100" />
                 </div>
@@ -575,7 +591,7 @@ export function CapsuleDetail({
             </div>
           )}
 
-          <div className="grid gap-2.5 border-t border-white/10 bg-[#050b1a]/55 px-4 py-3 sm:grid-cols-2 sm:px-6 sm:py-4 lg:grid-cols-3">
+          <div className="grid gap-2.5 border-t border-cyan-200/10 bg-[#10224a]/62 px-4 py-3 sm:grid-cols-2 sm:px-6 sm:py-4 lg:grid-cols-3">
             <div className="flex items-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/12 bg-white/[0.04]">
                 <Clock className="h-3.5 w-3.5 text-slate-300" />

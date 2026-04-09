@@ -2,6 +2,7 @@ package com.oleksandrmytro.timecapsule.services;
 
 import com.oleksandrmytro.timecapsule.dto.CreateCapsuleRequest;
 import com.oleksandrmytro.timecapsule.dto.ShareCapsuleRequest;
+import com.oleksandrmytro.timecapsule.dto.UpdateCapsuleRequest;
 import com.oleksandrmytro.timecapsule.events.CapsuleStatusEvent;
 import com.oleksandrmytro.timecapsule.models.Capsule;
 import com.oleksandrmytro.timecapsule.models.Share;
@@ -37,6 +38,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -137,6 +139,196 @@ public class CapsuleService {
         return toResponse(saved);
     }
 
+    public CapsuleResponse getEditable(String capsuleId, String actorId) {
+        User actor = requireActor(actorId);
+        Capsule capsule = capsuleRepository.findByIdAndDeletedAtIsNull(capsuleId)
+                .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
+
+        ensureCanEdit(capsule, actor);
+        return toResponse(capsule, null, true);
+    }
+
+    public CapsuleResponse update(String capsuleId, String actorId, UpdateCapsuleRequest request) {
+        User actor = requireActor(actorId);
+        Capsule capsule = capsuleRepository.findByIdAndDeletedAtIsNull(capsuleId)
+                .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
+
+        boolean isAdmin = actor.getRole() == User.Role.ADMIN;
+        ensureCanEdit(capsule, actor);
+        validateCapsuleUpdateRequest(request, isAdmin);
+
+        CapsuleVisibility visibility = CapsuleVisibility.fromValue(request.getVisibility());
+        CapsuleStatus targetStatus = CapsuleStatus.fromValue(request.getStatus());
+
+        capsule.setTitle(request.getTitle().trim());
+        capsule.setBody(normalizeBlankToNull(request.getBody()));
+        capsule.setVisibility(visibility);
+        capsule.setStatus(targetStatus.getValue());
+        capsule.setUnlockAt(request.getUnlockAt());
+        capsule.setExpiresAt(request.getExpiresAt());
+
+        boolean publicVisibility = CapsuleVisibility.PUBLIC.equals(visibility);
+        capsule.setAllowComments(publicVisibility && Boolean.TRUE.equals(request.getAllowComments()));
+        capsule.setAllowReactions(publicVisibility && Boolean.TRUE.equals(request.getAllowReactions()));
+        capsule.setTags(normalizeTags(request.getTags()));
+        capsule.setCoverImageUrl(normalizeBlankToNull(request.getCoverImageUrl()));
+        capsule.setMedia(mapUpdateMediaRequest(request.getMedia()));
+
+        Instant now = Instant.now();
+        if (CapsuleStatus.OPENED.equals(targetStatus)) {
+            if (capsule.getOpenedAt() == null) {
+                capsule.setOpenedAt(now);
+            }
+        } else {
+            capsule.setOpenedAt(null);
+        }
+
+        if (CapsuleVisibility.SHARED.equals(visibility) &&
+                (capsule.getShareToken() == null || capsule.getShareToken().isBlank())) {
+            capsule.setShareToken(generateShareToken());
+        }
+
+        Capsule.GeoPoint requestedLocation = normalizeGeo(mapGeo(request.getLocation()));
+        if (requestedLocation == null) {
+            archiveGeoMarkers(capsule);
+            capsule.setGeoMarkerId(null);
+            capsule.setLocation(null);
+        } else {
+            try {
+                ObjectId markerId = upsertGeoMarker(capsule, requestedLocation, visibility);
+                capsule.setGeoMarkerId(markerId);
+                capsule.setLocation(null);
+            } catch (RuntimeException ex) {
+                // Fallback for resilience: preserve location in capsule document.
+                capsule.setGeoMarkerId(null);
+                capsule.setLocation(requestedLocation);
+            }
+        }
+
+        capsule.setUpdatedAt(now);
+        Query persistQuery = new Query(
+                Criteria.where("_id").is(capsule.getId())
+                        .and("ownerId").is(capsule.getOwnerId())
+                        .and("deletedAt").is(null)
+        );
+        Update persistUpdate = new Update()
+                .set("title", capsule.getTitle())
+                .set("visibility", capsule.getVisibility())
+                .set("status", capsule.getStatus())
+                .set("unlockAt", capsule.getUnlockAt())
+                .set("allowComments", capsule.getAllowComments())
+                .set("allowReactions", capsule.getAllowReactions())
+                .set("tags", capsule.getTags() != null ? capsule.getTags() : List.of())
+                .set("media", capsule.getMedia() != null ? capsule.getMedia() : List.of())
+                .set("updatedAt", capsule.getUpdatedAt());
+
+        if (capsule.getBody() != null) {
+            persistUpdate.set("body", capsule.getBody());
+        } else {
+            persistUpdate.unset("body");
+        }
+
+        if (capsule.getExpiresAt() != null) {
+            persistUpdate.set("expiresAt", capsule.getExpiresAt());
+        } else {
+            persistUpdate.unset("expiresAt");
+        }
+
+        if (capsule.getCoverImageUrl() != null) {
+            persistUpdate.set("coverImageUrl", capsule.getCoverImageUrl());
+        } else {
+            persistUpdate.unset("coverImageUrl");
+        }
+
+        if (capsule.getOpenedAt() != null) {
+            persistUpdate.set("openedAt", capsule.getOpenedAt());
+        } else {
+            persistUpdate.unset("openedAt");
+        }
+
+        if (capsule.getShareToken() != null && !capsule.getShareToken().isBlank()) {
+            persistUpdate.set("shareToken", capsule.getShareToken());
+        } else {
+            persistUpdate.unset("shareToken");
+        }
+
+        if (capsule.getGeoMarkerId() != null) {
+            persistUpdate.set("geoMarkerId", capsule.getGeoMarkerId());
+        } else {
+            persistUpdate.unset("geoMarkerId");
+        }
+
+        if (capsule.getLocation() != null) {
+            persistUpdate.set("location", capsule.getLocation());
+        } else {
+            persistUpdate.unset("location");
+        }
+
+        mongoTemplate.updateFirst(persistQuery, persistUpdate, Capsule.class);
+        Capsule saved = mongoTemplate.findOne(persistQuery, Capsule.class);
+        if (saved == null) {
+            throw new IllegalStateException("Failed to persist capsule update");
+        }
+        return toResponse(saved, null, true);
+    }
+
+    private User requireActor(String actorId) {
+        if (actorId == null || actorId.isBlank()) {
+            throw new SecurityException("Unauthorized");
+        }
+        return userRepository.findById(actorId)
+                .orElseThrow(() -> new SecurityException("Unauthorized"));
+    }
+
+    private void ensureCanEdit(Capsule capsule, User actor) {
+        boolean isAdmin = actor.getRole() == User.Role.ADMIN;
+        boolean isOwner = capsule.getOwnerId() != null && Objects.equals(capsule.getOwnerId().toHexString(), actor.getId());
+        if (!isOwner && !isAdmin) {
+            throw new SecurityException("Only owner or admin can edit this capsule");
+        }
+
+        CapsuleStatus currentStatus = CapsuleStatus.fromValue(capsule.getStatus());
+        if (!isAdmin && CapsuleStatus.OPENED.equals(currentStatus)) {
+            throw new SecurityException("Opened capsules cannot be edited");
+        }
+    }
+
+    private void validateCapsuleUpdateRequest(UpdateCapsuleRequest request, boolean isAdmin) {
+        CapsuleStatus status = CapsuleStatus.fromValue(request.getStatus());
+        if (!isAdmin && CapsuleStatus.OPENED.equals(status)) {
+            throw new SecurityException("Only admin can set capsule status to opened");
+        }
+
+        if (CapsuleStatus.SEALED.equals(status)) {
+            if (request.getUnlockAt() == null) {
+                throw new IllegalArgumentException("Unlock date is required for sealed capsules");
+            }
+            if (!request.getUnlockAt().isAfter(Instant.now())) {
+                throw new IllegalArgumentException("Unlock date must be in the future for sealed capsules");
+            }
+        }
+
+        if (request.getExpiresAt() != null && request.getUnlockAt() != null && !request.getExpiresAt().isAfter(request.getUnlockAt())) {
+            throw new IllegalArgumentException("Expiration date must be after unlock date");
+        }
+
+        if (request.getMedia() != null) {
+            for (UpdateCapsuleRequest.MediaDto item : request.getMedia()) {
+                if (item == null) {
+                    throw new IllegalArgumentException("Media item cannot be null");
+                }
+                String url = normalizeBlankToNull(item.getUrl());
+                String type = normalizeBlankToNull(item.getType());
+                if (url == null || type == null) {
+                    throw new IllegalArgumentException("Each media item must contain url and type");
+                }
+                if (!"image".equalsIgnoreCase(type) && !"video".equalsIgnoreCase(type)) {
+                    throw new IllegalArgumentException("Media type must be image or video");
+                }
+            }
+        }
+    }
+
     private void validateCapsuleRequest(CreateCapsuleRequest request) {
         CapsuleStatus status = CapsuleStatus.fromValue(request.getStatus());
         if (CapsuleStatus.SEALED.equals(status)) {
@@ -181,6 +373,16 @@ public class CapsuleService {
         ready.forEach(c -> notifyOwner(ownerId, toUnlocked(c)));
 
         List<Capsule> capsules = capsuleRepository.findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(owner);
+        Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(capsules);
+        return capsules.stream()
+                .map(c -> toResponse(c, locationsByCapsuleId))
+                .collect(Collectors.toList());
+    }
+
+    public List<CapsuleResponse> listPublic() {
+        List<Capsule> capsules = capsuleRepository.findByVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(
+                CapsuleVisibility.PUBLIC.getValue()
+        );
         Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(capsules);
         return capsules.stream()
                 .map(c -> toResponse(c, locationsByCapsuleId))
@@ -384,10 +586,16 @@ public class CapsuleService {
      * @return
      */
     private CapsuleResponse toResponse(Capsule capsule) {
-        return toResponse(capsule, null);
+        return toResponse(capsule, null, false);
     }
 
     private CapsuleResponse toResponse(Capsule capsule, Map<String, Capsule.GeoPoint> locationsByCapsuleId) {
+        return toResponse(capsule, locationsByCapsuleId, false);
+    }
+
+    private CapsuleResponse toResponse(Capsule capsule,
+                                      Map<String, Capsule.GeoPoint> locationsByCapsuleId,
+                                      boolean includeLockedContent) {
         CapsuleResponse resp = new CapsuleResponse();
         resp.setId(capsule.getId());
         resp.setOwnerId(capsule.getOwnerId() != null ? capsule.getOwnerId().toHexString() : null);
@@ -396,7 +604,7 @@ public class CapsuleService {
         boolean isLocked = isLocked(capsule.getStatus(), capsule.getUnlockAt());
 
         resp.setIsLocked(isLocked);
-        if (isLocked) {
+        if (isLocked && !includeLockedContent) {
             resp.setBody(null);
             resp.setMedia(null);
         } else {
@@ -453,6 +661,18 @@ public class CapsuleService {
         }).collect(Collectors.toList());
     }
 
+    private List<Capsule.Media> mapUpdateMediaRequest(List<UpdateCapsuleRequest.MediaDto> media) {
+        if (media == null) return null;
+        return media.stream().map(m -> {
+            Capsule.Media cm = new Capsule.Media();
+            cm.setId(m.getId() != null ? m.getId() : m.getUrl());
+            cm.setUrl(m.getUrl());
+            cm.setType(m.getType());
+            cm.setMeta(m.getMeta());
+            return cm;
+        }).collect(Collectors.toList());
+    }
+
     private CapsuleResponse.GeoPoint mapGeo(Capsule.GeoPoint geo) {
         if (geo == null) return null;
         Capsule.GeoPoint normalized = normalizeGeo(geo);
@@ -474,6 +694,35 @@ public class CapsuleService {
         g.setType(geo.getType() == null || geo.getType().isBlank() ? "Point" : geo.getType());
         g.setCoordinates(List.of(lon, lat));
         return g;
+    }
+
+    private Capsule.GeoPoint mapGeo(UpdateCapsuleRequest.GeoPointDto geo) {
+        if (geo == null) return null;
+        List<Double> coordinates = geo.getCoordinates();
+        if (coordinates == null || coordinates.size() < 2) return null;
+        Double lon = coordinates.get(0);
+        Double lat = coordinates.get(1);
+        if (lon == null || lat == null) return null;
+        Capsule.GeoPoint g = new Capsule.GeoPoint();
+        g.setType(geo.getType() == null || geo.getType().isBlank() ? "Point" : geo.getType());
+        g.setCoordinates(List.of(lon, lat));
+        return g;
+    }
+
+    private String normalizeBlankToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null) return null;
+        return tags.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     private boolean isLocked(String status, Instant unlockAt) {
@@ -677,6 +926,30 @@ public class CapsuleService {
         }
 
         return byCapsuleId;
+    }
+
+    private void archiveGeoMarkers(Capsule capsule) {
+        Instant now = Instant.now();
+
+        if (capsule.getGeoMarkerId() != null) {
+            mongoTemplate.updateFirst(
+                    new Query(Criteria.where("_id").is(capsule.getGeoMarkerId())),
+                    new Update()
+                            .set("deletedAt", now)
+                            .set("updatedAt", now),
+                    GEO_MARKERS_COLLECTION
+            );
+        }
+
+        if (capsule.getId() != null && ObjectId.isValid(capsule.getId())) {
+            mongoTemplate.updateMulti(
+                    new Query(Criteria.where("capsuleId").is(new ObjectId(capsule.getId())).and("deletedAt").is(null)),
+                    new Update()
+                            .set("deletedAt", now)
+                            .set("updatedAt", now),
+                    GEO_MARKERS_COLLECTION
+            );
+        }
     }
 
     private ObjectId upsertGeoMarker(Capsule capsule, Capsule.GeoPoint location, CapsuleVisibility visibility) {

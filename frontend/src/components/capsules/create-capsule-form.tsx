@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Crosshair, Globe, Link2, Loader2, Lock, LocateFixed, MapPin, Search, X } from "lucide-react"
+import { ArrowLeft, Crosshair, Globe, Link2, Loader2, Lock, LocateFixed, MapPin, Search, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -12,8 +12,8 @@ import { AlertBanner } from "@/components/alert-banner"
 import { CoverUploader } from "@/components/capsules/cover-uploader"
 import { TagPicker } from "@/components/capsules/tag-picker"
 import { MediaUploader, type MediaFile } from "@/components/media/media-uploader"
-import { uploadCoverImage, uploadMedia } from "@/services/api"
-import type { ApiError, Capsule, CreateCapsulePayload } from "@/services/api"
+import { getApiBase, uploadCapsuleAttachment, uploadCoverImage } from "@/services/api"
+import type { ApiError, Capsule, CreateCapsulePayload, MediaItem } from "@/services/api"
 import { SpaceBackgroundFrame } from "@/components/space-background-frame"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
@@ -31,6 +31,9 @@ interface CreateCapsuleFormProps {
   onSubmit: (data: CreateCapsulePayload) => Promise<Capsule>
   onCancel?: () => void
   error: ApiError | null
+  initialCapsule?: Capsule | null
+  mode?: "create" | "edit"
+  onSubmitted?: (capsule: Capsule) => void
 }
 
 const PICKER_DEFAULT_CENTER: [number, number] = [26, 12]
@@ -39,6 +42,21 @@ const OSM_TILE_URL = "/tiles/osm/{z}/{x}/{y}.png"
 const CARTO_TILE_URL = "/tiles/carto-dark/{z}/{x}/{y}{r}.png"
 const DIRECT_OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const DIRECT_CARTO_TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+
+function toDateTimeLocalValue(value?: string | null): string {
+  if (!value) return ""
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ""
+  const adjusted = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000)
+  return adjusted.toISOString().slice(0, 16)
+}
+
+function resolveAssetUrl(url?: string | null): string {
+  if (!url) return ""
+  if (url.startsWith("http://") || url.startsWith("https://")) return url
+  if (url.startsWith("/")) return `${getApiBase()}${url}`
+  return `${getApiBase()}/${url}`
+}
 
 function forceLeafletLayout(map: L.Map) {
   const sync = () => {
@@ -156,7 +174,15 @@ function bindFreeTileLayer(map: L.Map) {
   }
 }
 
-export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: CreateCapsuleFormProps) {
+export function CreateCapsuleForm({
+  onSubmit,
+  onCancel,
+  error: parentError,
+  initialCapsule = null,
+  mode = "create",
+  onSubmitted,
+}: CreateCapsuleFormProps) {
+  const isEditMode = mode === "edit"
   const [isLoading, setIsLoading] = useState(false)
   const [localError, setLocalError] = useState<ApiError | null>(null)
   const [title, setTitle] = useState("")
@@ -170,6 +196,7 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   const [allowComments, setAllowComments] = useState(true)
   const [allowReactions, setAllowReactions] = useState(true)
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([])
+  const [existingMedia, setExistingMedia] = useState<MediaItem[]>([])
 
   const [useLocation, setUseLocation] = useState(false)
   const [locationLat, setLocationLat] = useState("")
@@ -193,12 +220,52 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   const navigate = useNavigate()
 
   useEffect(() => {
+    if (!isEditMode || !initialCapsule) return
+
+    setTitle(initialCapsule.title || "")
+    setBody(initialCapsule.body || "")
+    setUnlockAt(toDateTimeLocalValue(initialCapsule.unlockAt))
+    setExpiresAt(toDateTimeLocalValue(initialCapsule.expiresAt))
+    setTags(Array.isArray(initialCapsule.tags) ? initialCapsule.tags : [])
+    setCoverValue(initialCapsule.coverImageUrl || null)
+    setVisibility(initialCapsule.visibility || "private")
+    setStatus(initialCapsule.status || "sealed")
+    setAllowComments(Boolean(initialCapsule.allowComments))
+    setAllowReactions(Boolean(initialCapsule.allowReactions))
+    setExistingMedia(Array.isArray(initialCapsule.media) ? initialCapsule.media : [])
+    setMediaFiles([])
+
+    const coordinates = initialCapsule.location?.coordinates
+    if (
+      Array.isArray(coordinates) &&
+      coordinates.length >= 2 &&
+      Number.isFinite(coordinates[0]) &&
+      Number.isFinite(coordinates[1])
+    ) {
+      const lon = Number(coordinates[0])
+      const lat = Number(coordinates[1])
+      setUseLocation(true)
+      setLocationLat(lat.toFixed(6))
+      setLocationLon(lon.toFixed(6))
+      setLocationLabel("Saved location")
+      setPickerLat(lat.toFixed(6))
+      setPickerLon(lon.toFixed(6))
+      setPickerLabel("Saved location")
+    } else {
+      setUseLocation(false)
+      setLocationLat("")
+      setLocationLon("")
+      setLocationLabel("")
+      setPickerLat("")
+      setPickerLon("")
+      setPickerLabel("")
+    }
+  }, [isEditMode, initialCapsule])
+
+  useEffect(() => {
     if (visibility !== "public") {
       setAllowComments(false)
       setAllowReactions(false)
-    } else {
-      setAllowComments(true)
-      setAllowReactions(true)
     }
   }, [visibility])
 
@@ -420,6 +487,10 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
     setPickerSearch("")
   }
 
+  const removeExistingMediaItem = (mediaId: string, mediaUrl: string) => {
+    setExistingMedia((prev) => prev.filter((item) => item.id !== mediaId && item.url !== mediaUrl))
+  }
+
   const applyLocationFromPicker = () => {
     const lat = Number(pickerLat)
     const lon = Number(pickerLon)
@@ -457,21 +528,27 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
     const unlockDate = new Date(unlockAt)
     const now = new Date()
 
-    if (unlockDate <= now) {
-      setLocalError({ status: 0, message: "Unlock date must be in the future" })
+    if (Number.isNaN(unlockDate.getTime())) {
+      setLocalError({ status: 0, message: "Unlock date is invalid" })
       return
     }
+
+    if (status === "sealed" && unlockDate <= now) {
+      setLocalError({ status: 0, message: "Unlock date must be in the future for sealed capsules" })
+      return
+    }
+
     if (unlockDate.getFullYear() > 2100) {
       setLocalError({ status: 0, message: "Unlock year cannot exceed 2100" })
-      return
-    }
-    if (unlockDate.getFullYear() < now.getFullYear()) {
-      setLocalError({ status: 0, message: "Invalid unlock date" })
       return
     }
 
     if (expiresAt) {
       const expiresDate = new Date(expiresAt)
+      if (Number.isNaN(expiresDate.getTime())) {
+        setLocalError({ status: 0, message: "Expiry date is invalid" })
+        return
+      }
       if (expiresDate.getFullYear() > 2100) {
         setLocalError({ status: 0, message: "Expiry year cannot exceed 2100" })
         return
@@ -506,7 +583,22 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
         resolvedCoverUrl = coverValue
       }
 
-      const created = await onSubmit({
+      const uploadedMedia: NonNullable<CreateCapsulePayload["media"]> = []
+      for (const mediaFile of mediaFiles) {
+        const uploaded = await uploadCapsuleAttachment(mediaFile.file)
+        uploadedMedia.push(uploaded)
+      }
+      const mergedMedia: NonNullable<CreateCapsulePayload["media"]> = [
+        ...existingMedia.map((item) => ({
+          id: item.id,
+          url: item.url,
+          type: item.type,
+          meta: item.meta,
+        })),
+        ...uploadedMedia,
+      ]
+
+      const savedCapsule = await onSubmit({
         title: trimmedTitle,
         body: trimmedBody || null,
         visibility,
@@ -517,17 +609,14 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
         allowReactions,
         tags: tags.length > 0 ? tags : null,
         coverImageUrl: resolvedCoverUrl,
-        media: null,
+        media: mergedMedia.length > 0 ? mergedMedia : null,
         location: locationPayload,
       })
 
-      if (mediaFiles.length > 0) {
-        for (const mediaFile of mediaFiles) {
-          await uploadMedia(created.id, mediaFile.file)
-        }
+      onSubmitted?.(savedCapsule)
+      if (!onSubmitted) {
+        navigate(isEditMode ? `/capsules/${savedCapsule.id}` : "/account")
       }
-
-      navigate("/capsules")
     } catch (err: any) {
       setLocalError(err)
     } finally {
@@ -536,14 +625,14 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
   }
 
   return (
-    <section className="relative isolate min-h-[calc(100svh-var(--tc-shell-offset,4rem))] overflow-hidden bg-[#050816] px-4 py-5 lg:px-8 lg:py-7">
+    <section className="relative isolate min-h-[calc(100svh-var(--tc-shell-offset,4rem))] overflow-hidden bg-[#0c1f45] px-4 py-5 lg:px-8 lg:py-7">
       <div className="pointer-events-none absolute inset-0 -z-20" aria-hidden="true">
         <SpaceBackgroundFrame className="opacity-[0.24] blur-[1px]" restoreSnapshot startSettled />
       </div>
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(3,6,16,0.68)_0%,rgba(3,6,16,0.78)_58%,rgba(3,6,16,0.88)_100%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,rgba(124,92,255,0.12)_0%,rgba(124,92,255,0)_42%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_24%,rgba(94,230,255,0.11)_0%,rgba(94,230,255,0)_40%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,20,46,0.56)_0%,rgba(9,18,40,0.68)_58%,rgba(8,16,34,0.8)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,rgba(124,92,255,0.18)_0%,rgba(124,92,255,0)_42%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_82%_24%,rgba(94,230,255,0.18)_0%,rgba(94,230,255,0)_40%)]" />
       </div>
 
       <div className="mx-auto w-full max-w-7xl">
@@ -558,7 +647,11 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
 
         {error && (
           <div className="mb-5 rounded-xl border border-rose-300/28 bg-rose-500/8 p-2">
-            <AlertBanner type="error" message={error.message || "Failed to create capsule"} onDismiss={() => setLocalError(null)} />
+            <AlertBanner
+              type="error"
+              message={error.message || (isEditMode ? "Failed to update capsule" : "Failed to create capsule")}
+              onDismiss={() => setLocalError(null)}
+            />
           </div>
         )}
 
@@ -566,8 +659,12 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
           <form onSubmit={handleSubmit} className="grid min-w-0 gap-5 lg:grid-cols-2">
             <section className={sectionCardClass}>
               <p className={sectionTitleClass}>Basic Info</p>
-              <h1 className="mt-2 font-serif text-2xl font-semibold text-slate-50">Create Time Capsule</h1>
-              <p className="mt-1 text-sm text-slate-300">Write it today. Reopen it in the future.</p>
+              <h1 className="mt-2 font-serif text-2xl font-semibold text-slate-50">
+                {isEditMode ? "Edit Time Capsule" : "Create Time Capsule"}
+              </h1>
+              <p className="mt-1 text-sm text-slate-300">
+                {isEditMode ? "Update your capsule details and save changes." : "Write it today. Reopen it in the future."}
+              </p>
 
               <div className="mt-5 flex flex-col gap-4">
                 <div className="flex flex-col gap-2">
@@ -651,7 +748,7 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
                     name="unlockAt"
                     type="datetime-local"
                     className={pickerInputClass}
-                    min={minDateString}
+                    min={status === "sealed" ? minDateString : undefined}
                     max={maxDateString}
                     required
                     value={unlockAt}
@@ -666,7 +763,7 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
                     name="expiresAt"
                     type="datetime-local"
                     className={pickerInputClass}
-                    min={minDateString}
+                    min={unlockAt || (status === "sealed" ? minDateString : undefined)}
                     max={maxDateString}
                     value={expiresAt}
                     onChange={(e) => setExpiresAt(e.target.value)}
@@ -763,8 +860,44 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
 
                 <div className="flex flex-col gap-2">
                   <Label className="text-sm font-medium text-slate-200">Media</Label>
+                  {isEditMode && existingMedia.length > 0 && (
+                    <div className="flex flex-col gap-2 rounded-xl border border-white/12 bg-white/[0.03] p-3">
+                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-300/85">Existing Media</p>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {existingMedia.map((item) => {
+                          const mediaId = item.id || item.url
+                          const preview = resolveAssetUrl(item.thumbnail || item.url)
+                          return (
+                            <div
+                              key={`${mediaId}-${item.url}`}
+                              className="group relative aspect-square overflow-hidden rounded-lg border border-white/12 bg-slate-950/55"
+                            >
+                              {item.type === "video" ? (
+                                <video src={preview} className="h-full w-full object-cover" muted playsInline />
+                              ) : (
+                                <img src={preview} alt={item.alt || "Capsule media"} className="h-full w-full object-cover" />
+                              )}
+                              <div className="absolute inset-0 bg-slate-950/40 opacity-0 transition-opacity group-hover:opacity-100" />
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="destructive"
+                                className="absolute right-2 top-2 h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
+                                onClick={() => removeExistingMediaItem(mediaId, item.url)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <p className="text-xs text-slate-400">You can remove existing files and add new ones below.</p>
+                    </div>
+                  )}
                   <MediaUploader files={mediaFiles} onFilesChange={setMediaFiles} theme="cosmic" />
-                  <p className="text-xs text-slate-400">Optional. Add photos or videos to your capsule.</p>
+                  <p className="text-xs text-slate-400">
+                    Optional. {isEditMode ? "Add more photos or videos to this capsule." : "Add photos or videos to your capsule."}
+                  </p>
                 </div>
               </div>
             </section>
@@ -779,20 +912,31 @@ export function CreateCapsuleForm({ onSubmit, onCancel, error: parentError }: Cr
               </div>
             </section>
 
-            <Button
-              type="submit"
-              className="h-12 w-full rounded-xl border border-violet-300/32 bg-[linear-gradient(120deg,rgba(124,92,255,0.86)_0%,rgba(74,120,216,0.82)_100%)] text-sm font-semibold text-slate-50 shadow-[0_12px_28px_rgba(84,99,229,0.28),0_0_20px_rgba(94,230,255,0.12)] transition-all hover:brightness-105 hover:shadow-[0_16px_34px_rgba(84,99,229,0.34),0_0_24px_rgba(94,230,255,0.16)] lg:col-span-2"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating capsule...
-                </>
-              ) : (
-                "Create Capsule"
-              )}
-            </Button>
+            <div className="flex flex-col-reverse gap-3 lg:col-span-2 sm:flex-row sm:items-center sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-white/18 bg-white/[0.03] text-slate-100 hover:bg-white/[0.08]"
+                onClick={() => (onCancel ? onCancel() : navigate(-1))}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="h-12 rounded-xl border border-violet-300/32 bg-[linear-gradient(120deg,rgba(124,92,255,0.86)_0%,rgba(74,120,216,0.82)_100%)] px-6 text-sm font-semibold text-slate-50 shadow-[0_12px_28px_rgba(84,99,229,0.28),0_0_20px_rgba(94,230,255,0.12)] transition-all hover:brightness-105 hover:shadow-[0_16px_34px_rgba(84,99,229,0.34),0_0_24px_rgba(94,230,255,0.16)]"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isEditMode ? "Saving changes..." : "Creating capsule..."}
+                  </>
+                ) : (
+                  isEditMode ? "Save Changes" : "Create Capsule"
+                )}
+              </Button>
+            </div>
           </form>
         </div>
       </div>

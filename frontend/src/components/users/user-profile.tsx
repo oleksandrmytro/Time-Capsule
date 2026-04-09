@@ -6,6 +6,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { ProfileCapsulesGrid } from "@/components/capsules/profile-capsules-grid"
 import { ProfileUsersGrid } from "@/components/users/profile-users-grid"
 import { SpaceBackgroundFrame } from "@/components/space-background-frame"
+import { resolveAssetUrl } from "@/lib/asset-url"
 import {
   UserPlus,
   UserMinus,
@@ -28,8 +29,8 @@ interface UserProfileViewProps {
   followers?: UserData[]
   following?: UserData[]
   capsules?: Capsule[]
-  onFollow?: (userId: string) => Promise<void>
-  onUnfollow?: (userId: string) => Promise<void>
+  onFollow?: (userId: string) => Promise<boolean | void>
+  onUnfollow?: (userId: string) => Promise<boolean | void>
   currentUserId?: string
 }
 
@@ -64,6 +65,10 @@ export function UserProfileView({
 
   const handleFollowToggle = async () => {
     if (isSelfProfile) return
+    if (!currentUserId) {
+      navigate("/login")
+      return
+    }
     setIsLoading(true)
     try {
       if (isFollowing) {
@@ -83,37 +88,48 @@ export function UserProfileView({
   }
 
   const handleFollow = async (userId: string) => {
+    if (!currentUserId) {
+      navigate("/login")
+      return false
+    }
     if (onFollow) await onFollow(userId)
     else await followUser(userId)
+    return true
   }
 
   const handleUnfollow = async (userId: string) => {
+    if (!currentUserId) {
+      navigate("/login")
+      return false
+    }
     if (onUnfollow) await onUnfollow(userId)
     else await unfollowUser(userId)
+    return true
   }
 
   const displayName = user.displayName || user.username || "User"
   const actualCapsulesCount = capsulesCount ?? user.capsulesCount ?? capsules.length ?? 0
   const followingCount = user.followingCount ?? following.length
+  const tabPanelClass = "mt-0 flex h-full min-h-[320px] flex-1 flex-col sm:min-h-[360px] lg:min-h-0"
 
   return (
-    <section className="relative isolate overflow-hidden bg-[#050816] px-4 py-7 sm:px-6 lg:px-8">
+    <section className="relative isolate flex min-h-[calc(100svh-var(--tc-shell-offset,4rem))] flex-col items-center overflow-hidden bg-[#0c1f45] px-4 py-7 sm:px-6 lg:px-8">
       <div className="pointer-events-none absolute inset-0 -z-20" aria-hidden="true">
         <SpaceBackgroundFrame className="opacity-[0.18] blur-[1px]" restoreSnapshot startSettled />
       </div>
       <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden="true">
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.74)_0%,rgba(3,8,20,0.84)_58%,rgba(3,8,22,0.92)_100%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(94,230,255,0.08)_0%,rgba(94,230,255,0)_42%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_20%,rgba(124,92,255,0.1)_0%,rgba(124,92,255,0)_44%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(10,20,46,0.56)_0%,rgba(9,18,40,0.68)_58%,rgba(8,16,34,0.8)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(94,230,255,0.15)_0%,rgba(94,230,255,0)_42%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_20%,rgba(124,92,255,0.16)_0%,rgba(124,92,255,0)_44%)]" />
       </div>
 
-      <div className="relative mx-auto w-full max-w-6xl space-y-6">
-        <div className="rounded-3xl border border-white/14 bg-slate-950/55 p-5 shadow-[0_30px_80px_rgba(2,6,23,0.58)] backdrop-blur-xl sm:p-7">
+      <div className="relative mx-auto flex h-full w-full max-w-6xl min-h-0 flex-1 flex-col gap-6">
+        <div className="rounded-3xl border border-cyan-200/12 bg-[#11254f]/64 p-5 shadow-[0_30px_80px_rgba(6,18,42,0.42)] backdrop-blur-xl sm:p-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
-              <div className="relative shrink-0">
+              <div className="relative mx-auto shrink-0 sm:mx-0">
                 <Avatar className="h-24 w-24 border border-white/20 shadow-[0_12px_34px_rgba(15,23,42,0.42)] sm:h-28 sm:w-28">
-                  <AvatarImage src={user.avatarUrl} alt={displayName} />
+                  <AvatarImage src={resolveAssetUrl(user.avatarUrl)} alt={displayName} />
                   <AvatarFallback className="bg-white/10 text-2xl font-bold text-slate-100">
                     {displayName.slice(0, 2).toUpperCase()}
                   </AvatarFallback>
@@ -178,7 +194,13 @@ export function UserProfileView({
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => navigate(`/chat/${user.id}`)}
+                    onClick={() => {
+                      if (!currentUserId) {
+                        navigate("/login")
+                        return
+                      }
+                      navigate(`/chat/${user.id}`)
+                    }}
                     size="sm"
                     className="gap-2 border-cyan-300/28 bg-cyan-300/12 text-cyan-100 hover:bg-cyan-300/18"
                   >
@@ -230,13 +252,13 @@ export function UserProfileView({
           </div>
         </div>
 
-        <div className="rounded-3xl border border-white/14 bg-slate-950/52 p-4 shadow-[0_24px_70px_rgba(2,6,23,0.5)] backdrop-blur-xl sm:p-6">
-          <Tabs value={activeTab} className="w-full">
-            <TabsContent value="capsules" className="mt-0">
+        <div className="flex h-full min-h-0 flex-1 flex-col rounded-3xl border border-cyan-200/12 bg-[#11254f]/60 p-4 shadow-[0_24px_70px_rgba(6,18,42,0.4)] backdrop-blur-xl sm:p-6">
+          <Tabs value={activeTab} className="flex h-full min-h-0 w-full flex-1 flex-col">
+            <TabsContent value="capsules" className={tabPanelClass}>
               <ProfileCapsulesGrid capsules={capsules} isOwnProfile={isSelfProfile} username={user.username || "user"} />
             </TabsContent>
 
-            <TabsContent value="followers" className="mt-0">
+            <TabsContent value="followers" className={tabPanelClass}>
               <ProfileUsersGrid
                 users={followers}
                 heading={`${followers.length} follower${followers.length !== 1 ? "s" : ""}`}
@@ -254,7 +276,7 @@ export function UserProfileView({
               />
             </TabsContent>
 
-            <TabsContent value="following" className="mt-0">
+            <TabsContent value="following" className={tabPanelClass}>
               <ProfileUsersGrid
                 users={following}
                 heading={`${following.length} following`}
