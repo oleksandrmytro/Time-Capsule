@@ -12,7 +12,6 @@ export interface UserData {
   avatar?: string
   bio?: string
   isFollowing?: boolean
-  isOnline?: boolean
   followersCount?: number
   followingCount?: number
   capsulesCount?: number

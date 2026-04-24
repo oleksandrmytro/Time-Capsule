@@ -15,7 +15,6 @@ public class UserProfileResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<AuthProvider> authProviders;
-    private Boolean isOnline;
     private Boolean isFollowing;
     private Long followersCount;
     private Long followingCount;
@@ -47,10 +46,6 @@ public class UserProfileResponse {
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
     public List<AuthProvider> getAuthProviders() { return authProviders; }
     public void setAuthProviders(List<AuthProvider> authProviders) { this.authProviders = authProviders; }
-    @JsonProperty("isOnline")
-    public Boolean getOnline() { return isOnline; }
-    @JsonProperty("isOnline")
-    public void setOnline(Boolean online) { isOnline = online; }
     @JsonProperty("isFollowing")
     public Boolean getFollowing() { return isFollowing; }
     @JsonProperty("isFollowing")

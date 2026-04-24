@@ -86,13 +86,12 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
                 className={`group flex w-full items-start gap-3 border-b border-cyan-200/8 bg-transparent px-4 py-3.5 text-left transition-colors ${selectedUserId === conv.user.id ? "bg-cyan-300/16 ring-1 ring-inset ring-cyan-200/28" : "hover:bg-white/[0.08]"}`}
               >
                 <div className="relative shrink-0">
-                    <Avatar className="h-11 w-11 border border-cyan-200/14">
+                  <Avatar className="h-11 w-11 border border-cyan-200/14">
                     <AvatarImage src={resolveAssetUrl(conv.user.avatar)} />
                     <AvatarFallback className="bg-violet-400/18 text-cyan-100">
                       {conv.user.displayName.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  {conv.user.isOnline && <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-slate-900 bg-emerald-400" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start gap-2">

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { AlertBanner } from "@/components/alert-banner"
 import { SpaceBackgroundFrame } from "@/components/space-background-frame"
 import { ArrowLeft, Loader2, Camera, LogOut, KeyRound, ShieldAlert } from "lucide-react"
-import { changeMyPassword, uploadAvatarImage, type UserProfile } from "@/services/api"
+import { changeMyPassword, confirmPasswordChangeByCode, requestPasswordChangeCode, uploadAvatarImage, type UserProfile } from "@/services/api"
 import { resolveAssetUrl } from "@/lib/asset-url"
 import { IMAGE_ACCEPT_ATTR } from "@/lib/media-types"
 
@@ -21,16 +21,21 @@ export function AccountForm({ profile, onProfileChange, onSave, onLogout }: Acco
   const [isLoading, setIsLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<any>(null)
+  const [isPasswordCodeSending, setIsPasswordCodeSending] = useState(false)
   const [isPasswordUpdating, setIsPasswordUpdating] = useState(false)
   const [isAvatarUploading, setIsAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [verificationCode, setVerificationCode] = useState("")
+  const [isPasswordCodeSent, setIsPasswordCodeSent] = useState(false)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const navigate = useNavigate()
+  const isForcedPasswordChange = Boolean(profile?.mustChangePassword)
+  const passwordEmail = profile?.email?.trim() || ""
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -48,33 +53,103 @@ export function AccountForm({ profile, onProfileChange, onSave, onLogout }: Acco
     }
   }
 
+  function resetPasswordForm() {
+    setCurrentPassword("")
+    setNewPassword("")
+    setConfirmPassword("")
+    setVerificationCode("")
+    setIsPasswordCodeSent(false)
+  }
+
+  function validateNewPassword(): string | null {
+    if (!newPassword) {
+      return "New password is required"
+    }
+    if (newPassword.length < 8) {
+      return "Password must be at least 8 characters"
+    }
+    if (newPassword !== confirmPassword) {
+      return "Passwords do not match"
+    }
+    return null
+  }
+
   async function handleChangePassword() {
     setPasswordError(null)
     setPasswordSuccess(null)
 
     if (!currentPassword.trim()) {
-      setPasswordError("Current password is required")
+      setPasswordError(isForcedPasswordChange ? "Temporary password is required" : "Current password is required")
       return
     }
-    if (newPassword.length < 8) {
-      setPasswordError("Password must be at least 8 characters")
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError("Passwords do not match")
+    const passwordValidationError = validateNewPassword()
+    if (passwordValidationError) {
+      setPasswordError(passwordValidationError)
       return
     }
 
     setIsPasswordUpdating(true)
     try {
       await changeMyPassword({ currentPassword: currentPassword.trim(), newPassword })
-      setPasswordSuccess("Password updated successfully.")
-      setCurrentPassword("")
-      setNewPassword("")
-      setConfirmPassword("")
+      setPasswordSuccess(isForcedPasswordChange ? "Temporary password replaced successfully." : "Password updated successfully.")
+      resetPasswordForm()
       if (profile?.mustChangePassword) {
         onProfileChange({ ...profile, mustChangePassword: false })
+        navigate("/account/settings", { replace: true })
       }
+    } catch (err: any) {
+      setPasswordError(err?.message || "Failed to update password")
+    } finally {
+      setIsPasswordUpdating(false)
+    }
+  }
+
+  async function handleSendPasswordCode() {
+    setPasswordError(null)
+    setPasswordSuccess(null)
+
+    if (!passwordEmail) {
+      setPasswordError("Email is not set for this account")
+      return
+    }
+    const passwordValidationError = validateNewPassword()
+    if (passwordValidationError) {
+      setPasswordError(passwordValidationError)
+      return
+    }
+
+    setIsPasswordCodeSending(true)
+    try {
+      await requestPasswordChangeCode()
+      setIsPasswordCodeSent(true)
+      setVerificationCode("")
+      setPasswordSuccess(`Verification code sent to ${passwordEmail}.`)
+    } catch (err: any) {
+      setPasswordError(err?.message || "Failed to send verification code")
+    } finally {
+      setIsPasswordCodeSending(false)
+    }
+  }
+
+  async function handleConfirmPasswordByCode() {
+    setPasswordError(null)
+    setPasswordSuccess(null)
+
+    const passwordValidationError = validateNewPassword()
+    if (passwordValidationError) {
+      setPasswordError(passwordValidationError)
+      return
+    }
+    if (!verificationCode.trim()) {
+      setPasswordError("Verification code is required")
+      return
+    }
+
+    setIsPasswordUpdating(true)
+    try {
+      await confirmPasswordChangeByCode({ code: verificationCode.trim(), newPassword })
+      setPasswordSuccess("Password updated successfully.")
+      resetPasswordForm()
     } catch (err: any) {
       setPasswordError(err?.message || "Failed to update password")
     } finally {
@@ -257,17 +332,25 @@ export function AccountForm({ profile, onProfileChange, onSave, onLogout }: Acco
               <div>
                 <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-100">
                   <KeyRound className="h-4 w-4 text-cyan-200" />
-                  Change Password
+                  {isForcedPasswordChange ? "Replace Temporary Password" : "Change Password"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-300">
-                  Enter current password and set a new one.
+                  {isForcedPasswordChange
+                    ? "Enter the temporary password from email and set your own new password."
+                    : passwordEmail
+                      ? `We'll send a verification code to ${passwordEmail}.`
+                      : "Add an email address to confirm password changes by code."}
                 </p>
-                {profile?.mustChangePassword ? (
+                {isForcedPasswordChange ? (
                   <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-amber-300/35 bg-amber-500/15 px-2.5 py-1 text-xs text-amber-100">
                     <ShieldAlert className="h-3.5 w-3.5" />
                     Temporary password active. You must change it now.
                   </p>
-                ) : null}
+                ) : (
+                  <p className="mt-2 text-xs text-slate-400">
+                    The verification code expires in 15 minutes.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -283,31 +366,33 @@ export function AccountForm({ profile, onProfileChange, onSave, onLogout }: Acco
             )}
 
             <div className="mt-4 grid gap-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="pwd-current" className="text-sm font-medium text-slate-100">
-                  Current Password
-                </Label>
-                <Input
-                  id="pwd-current"
-                  type="password"
-                  autoComplete="current-password"
-                  className="h-11 border-white/20 bg-white/[0.08] text-white placeholder:text-slate-300"
-                  placeholder="Enter current password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                />
-              </div>
+              {isForcedPasswordChange ? (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="pwd-current" className="text-sm font-medium text-slate-100">
+                    Temporary Password
+                  </Label>
+                  <Input
+                    id="pwd-current"
+                    type="password"
+                    autoComplete="current-password"
+                    className="h-11 border-white/20 bg-white/[0.08] text-white placeholder:text-slate-300"
+                    placeholder="Enter temporary password from email"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                </div>
+              ) : null}
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-2">
-                    <Label htmlFor="pwd-new" className="text-sm font-medium text-slate-100">
+                  <Label htmlFor="pwd-new" className="text-sm font-medium text-slate-100">
                     New Password
                   </Label>
                   <Input
                     id="pwd-new"
                     type="password"
                     autoComplete="new-password"
-                      className="h-11 border-white/20 bg-white/[0.08] text-white placeholder:text-slate-300"
+                    className="h-11 border-white/20 bg-white/[0.08] text-white placeholder:text-slate-300"
                     placeholder="At least 8 characters"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -315,14 +400,14 @@ export function AccountForm({ profile, onProfileChange, onSave, onLogout }: Acco
                 </div>
 
                 <div className="flex flex-col gap-2">
-                    <Label htmlFor="pwd-confirm" className="text-sm font-medium text-slate-100">
+                  <Label htmlFor="pwd-confirm" className="text-sm font-medium text-slate-100">
                     Confirm Password
                   </Label>
                   <Input
                     id="pwd-confirm"
                     type="password"
                     autoComplete="new-password"
-                      className="h-11 border-white/20 bg-white/[0.08] text-white placeholder:text-slate-300"
+                    className="h-11 border-white/20 bg-white/[0.08] text-white placeholder:text-slate-300"
                     placeholder="Repeat password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -330,23 +415,95 @@ export function AccountForm({ profile, onProfileChange, onSave, onLogout }: Acco
                 </div>
               </div>
 
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  onClick={handleChangePassword}
-                  disabled={isPasswordUpdating || !currentPassword.trim() || !newPassword || !confirmPassword}
-                  className="h-11 border border-cyan-200/40 bg-cyan-300/22 px-6 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/30"
-                >
-                  {isPasswordUpdating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Updating...
-                    </>
-                  ) : (
-                    "Update Password"
-                  )}
-                </Button>
-              </div>
+              {!isForcedPasswordChange && isPasswordCodeSent ? (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="pwd-code" className="text-sm font-medium text-slate-100">
+                    Verification Code
+                  </Label>
+                  <Input
+                    id="pwd-code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    className="h-11 border-white/20 bg-white/[0.08] text-white placeholder:text-slate-300"
+                    placeholder="Enter 6-digit code"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                </div>
+              ) : null}
+
+              {isForcedPasswordChange ? (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={handleChangePassword}
+                    disabled={isPasswordUpdating || !currentPassword.trim() || !newPassword || !confirmPassword}
+                    className="h-11 border border-cyan-200/40 bg-cyan-300/22 px-6 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/30"
+                  >
+                    {isPasswordUpdating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      "Replace Password"
+                    )}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap justify-end gap-3">
+                  {isPasswordCodeSent ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleSendPasswordCode}
+                      disabled={isPasswordCodeSending || isPasswordUpdating || !newPassword || !confirmPassword}
+                      className="h-11 border-white/20 bg-white/[0.06] px-6 text-sm font-semibold text-slate-100 hover:bg-white/[0.12]"
+                    >
+                      {isPasswordCodeSending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        "Resend Code"
+                      )}
+                    </Button>
+                  ) : null}
+
+                  <Button
+                    type="button"
+                    onClick={isPasswordCodeSent ? handleConfirmPasswordByCode : handleSendPasswordCode}
+                    disabled={
+                      isPasswordCodeSending ||
+                      isPasswordUpdating ||
+                      !newPassword ||
+                      !confirmPassword ||
+                      !passwordEmail ||
+                      (isPasswordCodeSent && !verificationCode.trim())
+                    }
+                    className="h-11 border border-cyan-200/40 bg-cyan-300/22 px-6 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/30"
+                  >
+                    {isPasswordCodeSending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : isPasswordUpdating ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : isPasswordCodeSent ? (
+                      "Confirm Password Change"
+                    ) : (
+                      "Send Verification Code"
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>

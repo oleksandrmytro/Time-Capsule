@@ -72,6 +72,8 @@ const collectionConfigs = {
     options: { presplit: { numInitialChunks: 6 } },
     indexes: [
       { ownerId: 1, createdAt: -1 },
+      { ownerId: 1, status: 1, deletedAt: 1, unlockAt: 1 },
+      { status: 1, deletedAt: 1, unlockAt: 1 },
       { visibility: 1, unlockAt: 1 },
       { unlockAt: 1 },
       { location: "2dsphere" }

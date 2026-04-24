@@ -26,9 +26,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     hmr: {
-      protocol: 'ws',
+      protocol: 'wss',
       host: 'localhost',
-      clientPort: 80,
+      clientPort: 443,
       path: '/vite-dev',
     },
     watch: { usePolling: true, interval: 300 },

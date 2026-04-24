@@ -28,6 +28,10 @@ public enum CapsuleStatus {
         return this == SEALED;
     }
 
+    public boolean isDraft() {
+        return this == DRAFT;
+    }
+
     public boolean isOpened() {
         return this == OPENED;
     }

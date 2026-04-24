@@ -138,7 +138,12 @@ function App() {
     if (!isValidProfile(data)) throw { status: 401, message: 'Invalid profile response' }
     setProfile(data)
     setTokens({ session: 'cookie' })
-    loadFollowing(data.id)
+    const role = (data.role || '').toLowerCase()
+    if (role !== 'admin' && role !== 'role_admin') {
+      loadFollowing(data.id)
+    } else {
+      setFollowing([])
+    }
     return data
   }
   // apiRequest('/api/auth/session', { method: 'GET' }) - Для того щоб дізнатись чи є активна сесія користувача(чи залогінений)
@@ -388,16 +393,19 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!isAuthenticated || !profile?.id) return
+    if (!isAuthenticated || !profile?.id || isAdmin) {
+      if (isAdmin) setFollowing([])
+      return
+    }
     loadFollowing(profile.id)
-  }, [isAuthenticated, profile?.id])
+  }, [isAuthenticated, profile?.id, isAdmin, loadFollowing])
 
   // Refresh following list when opening a capsule detail (so share dialog has data)
   useEffect(() => {
-    if (selectedCapsule && isAuthenticated && profile?.id) {
+    if (selectedCapsule && isAuthenticated && profile?.id && !isAdmin) {
       loadFollowing(profile.id)
     }
-  }, [selectedCapsule?.id, isAuthenticated, profile?.id])
+  }, [selectedCapsule?.id, isAuthenticated, profile?.id, isAdmin, loadFollowing])
 
   useEffect(() => {
     if (!isAuthenticated || !profile?.mustChangePassword) return
@@ -550,12 +558,16 @@ function App() {
                   capsule={selectedCapsule}
                   following={following}
                  onBack={() => {
+                   const fromState = (location.state as { from?: string } | null)?.from
+                   if (fromState && fromState !== location.pathname) {
+                     navigate(fromState, { replace: true })
+                     return
+                   }
                    const historyIdx = window.history.state?.idx
                    if (typeof historyIdx === "number" && historyIdx > 0) {
                      navigate(-1)
                      return
                    }
-                   const fromState = (location.state as { from?: string } | null)?.from
                   navigate(fromState || (isAuthenticated ? "/account" : "/discover"), { replace: true })
                  }}
                  onUnlock={handleUnlockCapsule}
@@ -567,7 +579,15 @@ function App() {
                     isAuthenticated &&
                     (isAdmin || (profile?.id && selectedCapsule.ownerId === profile.id && selectedCapsule.status !== 'opened'))
                   )}
-                  onEdit={(id) => navigate(`/capsules/${id}/edit`, { state: { from: location.pathname } })}
+                  onEdit={(id) => {
+                    const detailState = location.state as { from?: string } | null
+                    navigate(`/capsules/${id}/edit`, {
+                      state: {
+                        from: location.pathname,
+                        returnTo: detailState?.from || (isAuthenticated ? "/account" : "/discover"),
+                      },
+                    })
+                  }}
                 />
               ) : error ? (
                <div className="flex min-h-[60vh] items-center justify-center px-4 py-12">
@@ -635,9 +655,11 @@ function CapsuleEditRoute({
 }) {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const [capsule, setCapsule] = useState<Capsule | null>(null)
   const [loading, setLoading] = useState(true)
   const [routeError, setRouteError] = useState<ApiError | null>(null)
+  const returnTo = (location.state as { returnTo?: string } | null)?.returnTo || '/account'
 
   useEffect(() => {
     const normalizedId = safeDecodeSegment(String(id || '')).trim()
@@ -696,10 +718,10 @@ function CapsuleEditRoute({
       initialCapsule={capsule}
       error={routeError}
       onSubmit={(data) => onSubmit(capsule.id, data)}
-      onCancel={() => navigate(`/capsules/${capsule.id}`)}
+      onCancel={() => navigate(`/capsules/${capsule.id}`, { replace: true, state: { from: returnTo } })}
       onSubmitted={(updated) => {
         setCapsule(updated)
-        navigate(`/capsules/${updated.id}`, { replace: true, state: { from: '/account' } })
+        navigate(`/capsules/${updated.id}`, { replace: true, state: { from: returnTo } })
       }}
     />
   )
@@ -743,7 +765,6 @@ function ProfileRoute({ currentUserId }: { currentUserId?: string }) {
     avatar: u.avatar || u.avatarUrl,
     bio: u.bio,
     isFollowing: u.isFollowing,
-    isOnline: u.isOnline,
     followersCount: u.followersCount,
     followingCount: u.followingCount,
     capsulesCount: u.capsulesCount,
@@ -782,7 +803,6 @@ function AccountProfileRoute({ profile, capsules, onLoadCapsules }: { profile: U
     avatar: u.avatar || u.avatarUrl,
     bio: u.bio,
     isFollowing: u.isFollowing,
-    isOnline: u.isOnline,
     followersCount: u.followersCount,
     followingCount: u.followingCount,
     capsulesCount: u.capsulesCount,

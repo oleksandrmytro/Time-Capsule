@@ -40,7 +40,6 @@ interface ChatUser {
   username: string
   displayName: string
   avatar?: string
-  isOnline: boolean
 }
 
 type DisplayMessage = ChatMessage
@@ -76,7 +75,6 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
           username: conversation.user.username || userId,
           displayName: conversation.user.displayName || conversation.user.username || userId,
           avatar: conversation.user.avatar,
-          isOnline: !!conversation.user.isOnline,
         }
       }
     } catch {
@@ -93,7 +91,6 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
             username: entry.username || userId,
             displayName: entry.displayName || entry.username || userId,
             avatar: entry.avatar || entry.avatarUrl,
-            isOnline: !!entry.isOnline,
           }
         }
       } catch {
@@ -108,10 +105,9 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
         username: profile.username || userId,
         displayName: profile.displayName || profile.username || userId,
         avatar: profile.avatarUrl,
-        isOnline: !!profile.isOnline,
       }
     } catch {
-      return { id: userId, username: userId, displayName: userId, isOnline: false }
+      return { id: userId, username: userId, displayName: userId }
     }
   }, [userId, currentUserId])
 
@@ -144,16 +140,8 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
 
   const handleWsMessage = useCallback(
     (msg: ChatWsMessage) => {
-      if (msg.type === "presence") {
-        if (msg.userId === userId && typeof msg.isOnline === "boolean") {
-          setUser((previous) => (previous ? { ...previous, isOnline: msg.isOnline as boolean } : previous))
-        }
-        return
-      }
+      if (msg.type === "presence") return
       if (msg.fromUserId !== userId && !msg.fromMe) return
-      if (!msg.fromMe && msg.fromUserId === userId) {
-        setUser((previous) => (previous ? { ...previous, isOnline: true } : previous))
-      }
       const normalizedType = msg.type || msg.mediaKind || "text"
 
       setMessages((prev) => {
@@ -408,11 +396,10 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
         >
           <Avatar className="h-10 w-10">
             <AvatarImage src={resolveAssetUrl(user.avatar)} />
-            <AvatarFallback className="bg-violet-400/18 text-cyan-100">
+          <AvatarFallback className="bg-violet-400/18 text-cyan-100">
               {user.displayName.slice(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          {user.isOnline && <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-slate-900 bg-emerald-400" />}
         </button>
         <div className="min-w-0 flex-1">
           <button
@@ -421,7 +408,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
           >
             {user.displayName}
           </button>
-          <p className="text-xs text-slate-400">{user.isOnline ? "Online" : "Offline"}</p>
+          <p className="text-xs text-slate-400">@{user.username}</p>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -489,7 +476,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
                       {messageType === "capsule_share" ? (
                         <button
                           onClick={() => message.capsuleId && navigate(`/capsules/${message.capsuleId}`)}
-                          className={`max-w-[80%] cursor-pointer rounded-2xl border px-4 py-3 text-left transition-[background-color,box-shadow,transform] duration-300 ${message.fromMe ? "border-violet-300/30 bg-violet-400/12 hover:bg-violet-400/16" : "border-cyan-300/28 bg-cyan-300/10 hover:bg-cyan-300/14"} ${highlightedMessageId === message.id ? "message-jump-highlight ring-2 ring-cyan-300/60 shadow-[0_0_0_4px_rgba(94,230,255,0.14)]" : ""}`}
+                          className={`max-w-[80%] cursor-pointer rounded-lg border px-4 py-3 text-left transition-[background-color,transform] duration-300 ${message.fromMe ? "border-cyan-200/18 bg-[#1d4f7c]/82 hover:bg-[#225985]/86" : "border-cyan-300/28 bg-cyan-300/10 hover:bg-cyan-300/14"} ${highlightedMessageId === message.id ? "message-jump-highlight ring-1 ring-cyan-300/45" : ""}`}
                         >
                           <div className="mb-1 flex items-center gap-2">
                             <Package className="h-4 w-4 text-cyan-200" />
@@ -502,7 +489,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
                           </p>
                         </button>
                       ) : (
-                        <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 transition-[box-shadow,transform] duration-300 ${message.fromMe ? "border border-violet-200/24 bg-[linear-gradient(160deg,rgba(92,129,255,0.92)_0%,rgba(118,102,255,0.88)_100%)] text-slate-50 shadow-[0_12px_28px_rgba(77,90,214,0.22)]" : "border border-cyan-200/12 bg-[#17335f]/62 text-slate-100"} ${highlightedMessageId === message.id ? "message-jump-highlight ring-2 ring-cyan-300/60 shadow-[0_0_0_4px_rgba(94,230,255,0.14)]" : ""}`}>
+                        <div className={`max-w-[80%] rounded-lg border px-4 py-2.5 transition-transform duration-300 ${message.fromMe ? "border-cyan-200/18 bg-[#1d4f7c]/82 text-slate-50" : "border-cyan-200/12 bg-[#17335f]/62 text-slate-100"} ${highlightedMessageId === message.id ? "message-jump-highlight ring-1 ring-cyan-300/45" : ""}`}>
                           {parent && (
                             <button
                               type="button"
@@ -576,14 +563,14 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
         {sendError && <p className="text-xs text-rose-300">{sendError}</p>}
 
         {replyTo && (
-          <div className="flex items-center justify-between rounded-lg bg-violet-400/14 px-3 py-2 text-xs">
+          <div className="flex items-center justify-between rounded-lg bg-cyan-300/10 px-3 py-2 text-xs">
             <button
               type="button"
               onClick={() => scrollToMessage(replyTo.id)}
               className="flex min-w-0 flex-1 items-center gap-2 text-left"
             >
-              <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-violet-200" />
-              <span className="font-semibold text-violet-100">Reply to</span>
+              <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-cyan-200" />
+              <span className="font-semibold text-cyan-100">Reply to</span>
               <span className="line-clamp-1 break-words [overflow-wrap:anywhere] text-slate-200/80">{getReplyPreviewText(replyTo)}</span>
             </button>
             <button

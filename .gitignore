@@ -41,3 +41,6 @@ node_modules/
 **/*.env
 dev.env
 **/dev.env
+
+# Local TLS certificates
+nginx/certs/

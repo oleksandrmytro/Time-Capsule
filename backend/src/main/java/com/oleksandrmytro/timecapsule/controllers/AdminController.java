@@ -1,5 +1,6 @@
 package com.oleksandrmytro.timecapsule.controllers;
 
+import com.oleksandrmytro.timecapsule.config.AuthCookieService;
 import com.oleksandrmytro.timecapsule.models.Capsule;
 import com.oleksandrmytro.timecapsule.models.Tag;
 import com.oleksandrmytro.timecapsule.models.User;
@@ -16,7 +17,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 
-import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
@@ -27,11 +27,16 @@ public class AdminController {
     private final AdminService adminService;
     private final TagService tagService;
     private final AuthenticationService authenticationService;
+    private final AuthCookieService authCookieService;
 
-    public AdminController(AdminService adminService, TagService tagService, AuthenticationService authenticationService) {
+    public AdminController(AdminService adminService,
+                           TagService tagService,
+                           AuthenticationService authenticationService,
+                           AuthCookieService authCookieService) {
         this.adminService = adminService;
         this.tagService = tagService;
         this.authenticationService = authenticationService;
+        this.authCookieService = authCookieService;
     }
 
     /* ── Stats ─────────────────────────── */
@@ -102,7 +107,7 @@ public class AdminController {
                                                          HttpServletResponse response) {
         User actor = requireAdmin(auth);
         LoginResponse tokens = authenticationService.impersonateAsUser(actor, id);
-        writeAuthCookies(request, response, tokens);
+        authCookieService.writeAuthCookies(request, response, tokens);
         return ResponseEntity.ok(tokens);
     }
 
@@ -274,7 +279,6 @@ public class AdminController {
             Map.entry("role", u.getRoleDb() != null ? u.getRoleDb() : "regular"),
             Map.entry("enabled", u.isEnabled()),
             Map.entry("status", userStatus(u)),
-            Map.entry("isOnline", u.isOnline()),
             Map.entry("mustChangePassword", u.isMustChangePassword()),
             Map.entry("avatarUrl", u.getAvatarUrl() != null ? u.getAvatarUrl() : ""),
             Map.entry("createdAt", u.getCreatedAt() != null ? u.getCreatedAt().toString() : ""),
@@ -310,42 +314,5 @@ public class AdminController {
         return user.isEnabled() ? "active" : "disabled";
     }
 
-    private void writeAuthCookies(HttpServletRequest request, HttpServletResponse response, LoginResponse tokens) {
-        response.addHeader("Set-Cookie", buildCookie(request, "accessToken", tokens.getAccessToken(), (int) (tokens.getExpiresIn() / 1000)));
-        response.addHeader("Set-Cookie", buildCookie(request, "refreshToken", tokens.getRefreshToken(), (int) (tokens.getRefreshExpiresIn() / 1000)));
-    }
-
-    private String buildCookie(HttpServletRequest request, String name, String value, int maxAgeSeconds) {
-        boolean secure = request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"));
-        String sameSite = resolveSameSite(request, secure);
-        return name + "=" + value + "; HttpOnly; SameSite=" + sameSite + "; Path=/; Max-Age=" + maxAgeSeconds + (secure ? "; Secure" : "");
-    }
-
-    private String resolveSameSite(HttpServletRequest request, boolean secure) {
-        if (secure && isCrossSiteRequest(request)) {
-            return "None";
-        }
-        return "Lax";
-    }
-
-    private boolean isCrossSiteRequest(HttpServletRequest request) {
-        String fetchSite = request.getHeader("Sec-Fetch-Site");
-        if ("cross-site".equalsIgnoreCase(fetchSite)) {
-            return true;
-        }
-
-        String origin = request.getHeader("Origin");
-        if (origin == null || origin.isBlank()) {
-            return false;
-        }
-
-        try {
-            URI uri = URI.create(origin);
-            String originHost = uri.getHost();
-            return originHost != null && !originHost.equalsIgnoreCase(request.getServerName());
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
 }
 

@@ -144,7 +144,7 @@ public class UserController {
         try {
             User target = userService.getByIdOrUsername(id);
             if (target.getRole() == User.Role.ADMIN) {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.ok(List.of());
             }
             List<UserProfileResponse> list = userService.followers(target.getId()).stream().map(u -> toResponse(u, currentUserId)).toList();
             return ResponseEntity.ok(list);
@@ -159,7 +159,7 @@ public class UserController {
         try {
             User target = userService.getByIdOrUsername(id);
             if (target.getRole() == User.Role.ADMIN) {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity.ok(List.of());
             }
             List<UserProfileResponse> list = userService.following(target.getId()).stream().map(u -> toResponse(u, currentUserId)).toList();
             return ResponseEntity.ok(list);
@@ -194,7 +194,6 @@ public class UserController {
         resp.setEnabled(user.isEnabled());
         resp.setCreatedAt(user.getCreatedAt());
         resp.setUpdatedAt(user.getUpdatedAt());
-        resp.setOnline(user.isOnline());
         resp.setMustChangePassword(user.isMustChangePassword());
         resp.setDisplayName(user.getUsernameField());
         resp.setFollowersCount(userService.followersCount(user.getId()));

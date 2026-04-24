@@ -1,10 +1,13 @@
 package com.oleksandrmytro.timecapsule.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+
+import java.util.Arrays;
 
 // WebSocket configuration for STOMP messaging with JWT authentication.
 @Configuration
@@ -14,11 +17,17 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final WebSocketJwtChannelInterceptor webSocketJwtChannelInterceptor;
     private final CookieHandshakeInterceptor cookieHandshakeInterceptor;
+    private final String[] allowedOriginPatterns;
 
     public WebSocketConfig(WebSocketJwtChannelInterceptor webSocketJwtChannelInterceptor,
-                           CookieHandshakeInterceptor cookieHandshakeInterceptor) {
+                           CookieHandshakeInterceptor cookieHandshakeInterceptor,
+                           @Value("${websocket.allowed-origin-patterns:https://localhost*,https://127.0.0.1*,http://localhost*,http://127.0.0.1*,https://*.local*,http://*.local*,https://*.test*,http://*.test*,https://*.lan*,http://*.lan*}") String allowedOriginPatterns) {
         this.webSocketJwtChannelInterceptor = webSocketJwtChannelInterceptor;
         this.cookieHandshakeInterceptor = cookieHandshakeInterceptor;
+        this.allowedOriginPatterns = Arrays.stream(allowedOriginPatterns.split(","))
+                .map(String::trim)
+                .filter(pattern -> !pattern.isBlank())
+                .toArray(String[]::new);
     }
 
     @Override
@@ -32,7 +41,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
                 // Дозволяємо локальні origin, включно з 127.0.0.1 та будь-якими портами (Vite/Next/nginx)
-                .setAllowedOriginPatterns("http://localhost*", "http://127.0.0.1*", "http://*.local*", "http://*.test*", "http://*.lan*")
+                .setAllowedOriginPatterns(allowedOriginPatterns)
                 .addInterceptors(cookieHandshakeInterceptor)
                 .withSockJS();
     }

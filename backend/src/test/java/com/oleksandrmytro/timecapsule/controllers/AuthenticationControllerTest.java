@@ -1,22 +1,21 @@
 package com.oleksandrmytro.timecapsule.controllers;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.oleksandrmytro.timecapsule.dto.RefreshTokenRequest;
 import com.oleksandrmytro.timecapsule.repositories.AdminAuditLogRepository;
 import com.oleksandrmytro.timecapsule.responses.LoginResponse;
 import com.oleksandrmytro.timecapsule.services.AuthenticationService;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AuthenticationController.class)
@@ -38,31 +37,23 @@ class AuthenticationControllerTest {
     @MockBean
     private AdminAuditLogRepository adminAuditLogRepository;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
     @Test
     void refreshReturnsOk() throws Exception {
-        given(authenticationService.refreshTokens(any())).willReturn(new LoginResponse("access", 1000, "refresh", 2000));
+        given(authenticationService.refreshTokens(eq("dummy"))).willReturn(new LoginResponse("access", 1000, "refresh", 2000));
 
-        RefreshTokenRequest req = new RefreshTokenRequest();
-        req.setRefreshToken("dummy");
-
-        mockMvc.perform(post("/api/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/auth/refresh").cookie(new Cookie("refreshToken", "dummy")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(jsonPath("$.expiresIn").value(1000))
+                .andExpect(jsonPath("$.refreshExpiresIn").value(2000));
     }
 
     @Test
     void refreshCheckReturns304WhenNoRotation() throws Exception {
-        given(authenticationService.refreshWithRotationCheck(any())).willReturn(null);
+        given(authenticationService.refreshWithRotationCheck(eq("dummy"))).willReturn(null);
 
-        RefreshTokenRequest req = new RefreshTokenRequest();
-        req.setRefreshToken("dummy");
-
-        mockMvc.perform(post("/api/auth/refresh/check")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
+        mockMvc.perform(post("/api/auth/refresh/check").cookie(new Cookie("refreshToken", "dummy")))
                 .andExpect(status().isNotModified());
     }
 }

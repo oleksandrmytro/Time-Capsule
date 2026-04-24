@@ -170,7 +170,6 @@ public class ChatService {
             userMap.put("username", peer.getUsernameField());
             userMap.put("displayName", peer.getUsernameField());
             userMap.put("avatar", peer.getAvatarUrl());
-            userMap.put("isOnline", peer.isOnline());
 
             Map<String, Object> lastMsg = new HashMap<>();
             lastMsg.put("text", last.getText() == null ? "" : last.getText());

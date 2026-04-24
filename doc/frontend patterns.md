@@ -1,189 +1,188 @@
-Ниже набросок **frontend\_patterns.md** – добавьте его рядом с `backend_patterns.md`, чтобы оба файла выглядели «одной рукой написанные».
-Вёрстка, таблички и emoji‑акценты повторяют стиль backend‑документа и commit‑rules.md.
+# Frontend Patterns & Code Style
 
----
+This document describes the current React app in `frontend/`.
 
-# Frontend Patterns & Code Style (React + JS / JSX)
+## Stack
 
-| Раздел                     | TL;DR / что запомнить                                                        |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| **Файлы компонентов**      | `PascalCase.tsx` = имя default‑экспорта – `CreateEventForm.jsx`.             |
-| **Hooks**                  | префикс **use** – `useParticipants`, `useDrawAssignments`.                   |
-| **Состояние / переменные** | `camelCase` – `isLoading`, `currentPage`.                                    |
-| **Параметры**              | только объект‑деструктуризация – `startGame({ participants, isAnonymous })`. |
-| **Tailwind**               | utility‑first; повторяющиеся цепочки → `@apply` или `<UI.Button/>`.          |
-| **Структура**              | **containers** (логика) ↔ **components** (чистый UI).                        |
-| **Custom Hooks**           | всё, что использует `useState`/`useEffect` > 1 раза.                         |
-| **Импорты**                | абсолютные алиасы – `@components/Header`, `@hooks/useApi`.                   |
-| **Sanitize**               | каждый инпут через `sanitizeInput(value)` (+ DOMPurify для html).            |
-| **API‑service**            | singleton `/services/api.js` с fetch/axios; ни одного fetch в UI.            |
-| **Арх. паттерн**           | выбрать лучший - подробности ниже.                |
-| **Тесты**                  | Jest + React Testing Library: unit / integration / e2e (Playwright).         |
+- React 19.1.
+- React Router 7.
+- TypeScript 5.9.
+- Vite 7 with `@vitejs/plugin-react`.
+- Tailwind CSS 4 through `@tailwindcss/vite`.
+- Radix UI primitives for dialogs, tabs, selects, switches, dropdowns, avatars,
+  labels, scroll areas, and slots.
+- Leaflet and `leaflet.markercluster` for 2D maps.
+- Cesium plus `vite-plugin-cesium` for globe mode.
+- STOMP + SockJS for realtime chat and capsule status events.
+- Bun for local dependency install and scripts.
 
----
+## Source Layout
 
-## 1 . Дерево проекта
-
-```
-frontend/
-├─ src/
-│  ├─ components/        # чистый UI (stateless / “dumb”)
-│  │   └─ CreateEventForm/
-│  │       ├─ index.jsx  # default export CreateEventForm
-│  │       └─ styles.css # @apply из Tailwind, только стили
-│  ├─ containers/        # smart‑компоненты (state, hooks, routing)
-│  │   └─ CreateEvent/
-│  │       └─ index.jsx
-│  ├─ hooks/             # useSomething.js
-│  ├─ services/
-│  │   └─ api.js         # axios instance + методы
-│  ├─ utils/             # sanitizeInput.js, validators.js
-│  ├─ pages/             # Next/Router entry‑points (если SPA‑router)
-│  └─ index.jsx
-└─ tailwind.config.js
-```
-
-*Папка соответствует ответственности; имена – одно слово.*
-
----
-
-## 2 . Компоненты & Hooks
-
-```jsx
-// components/CreateEventForm/index.jsx
-export default function CreateEventForm({
-  participants,
-  drawDate,
-  onSubmit,
-  isLoading,
-}) {
-  return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      {/* только вывод + вызов колбэков */}
-    </form>
-  );
-}
-
-// hooks/useParticipants.js
-import { useState, useEffect } from 'react';
-import api from '@services/api';
-
-export default function useParticipants(eventId) {
-  const [participants, setParticipants] = useState([]);
-  const [isLoading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    api.get(`/events/${eventId}/participants`)
-      .then(({ data }) => setParticipants(data))
-      .finally(() => setLoading(false));
-  }, [eventId]);
-
-  return { participants, isLoading };
-}
+```text
+frontend/src
+  App.tsx                         route composition and session bootstrap
+  main.tsx                        React root, BrowserRouter, global polyfills
+  index.css                       Tailwind 4 theme tokens and global styles
+  services/
+    api.ts                        typed REST client and DTO types
+    ws.ts                         STOMP/SockJS client
+    scene-transition.ts           landing/background scene transitions
+  lib/
+    asset-url.ts                  static/upload URL normalization
+    media-types.ts                accepted media MIME helpers
+    native-file-picker.ts         file picker helper
+    space-scene.ts                custom background scene
+    tag-image-url.ts              tag image URL normalization
+    utils.ts                      small shared utilities
+  components/
+    account/
+    admin/
+    auth/
+    capsules/
+    chat/
+    landing/
+    media/
+    ui/
+    users/
 ```
 
-* UI‑компонент **никогда** не делает `fetch`, не мутирует стейт сам.
-* Вся логика – в контейнере или hook\`е.
+There is no `containers/` directory in the current app. Route-level orchestration
+mostly lives in `App.tsx`, while feature components own local UI state.
 
----
+## Routing
 
-## 3 . Tailwind CSS
+Current SPA routes:
 
-* **Utility‑first**: классами прямо в JSX.
-* Повторяющиеся цепочки → `@apply` в `*.css` или выносим в re‑usable UI‑компонент (`<Button variant="primary"/>`).
-* Глобальные переменные цвета/шрифтов – в `tailwind.config.js`.
+- `/`
+- `/landing-concept`
+- `/landing-concept/account-preview`
+- `/login`
+- `/register`
+- `/verify`
+- `/account`
+- `/account/settings`
+- `/create`
+- `/discover`
+- `/capsules`
+- `/capsules/:id`
+- `/capsules/:id/edit`
+- `/search`
+- `/calendar`
+- `/map`
+- `/admin/*`
+- `/profile/:username`
+- `/chat`
+- `/chat/:userId`
+- `/auth/oauth2/redirect`
 
----
+Heavy route components are lazy-loaded with `React.lazy` and `Suspense`.
+Map/globe code is further split so Cesium is imported only when globe mode is
+activated.
 
-## 4 . Sanitization & Validation
+## API Layer
 
-| Где                | Что делаем                                        |
-| ------------------ | ------------------------------------------------- |
-| **Input onChange** | `setValue(sanitizeInput(e.target.value))`         |
-| **Dangerous HTML** | `DOMPurify.sanitize(markdownToHtml(md))`          |
-| **API‑payload**    | `encodeURIComponent`, schema‑validation (Yup/Zod) |
+Use `frontend/src/services/api.ts` for backend calls. Components should not
+hard-code endpoint origins.
 
-`utils/sanitizeInput.js` – центральная функция; меняем её – чистим весь фронт.
+`api.ts` resolves the backend origin from:
 
----
+1. `VITE_API_ORIGIN`
+2. `VITE_API_BASE`
+3. `VITE_API_URL`
+4. the current browser origin, with a localhost Vite fallback from `5173` to
+   backend port `8080`
 
-## 5 . Архитектурные шаблоны UI
+Requests use `credentials: 'include'` because auth tokens are HttpOnly cookies.
+FormData uploads intentionally omit the JSON `Content-Type` header.
 
-| Шаблон                          | Плюсы                                                      | Минусы / “не наше”                |
-| ------------------------------- | ---------------------------------------------------------- | --------------------------------- |
-| **MVP** (Model‑View‑Presenter)  | Лёгкое тестирование Presenter                              | Много boilerplate, callbacks hell |
-| **MVVM** (…‑View‑ViewModel)     | Двусторонний binding                                       | Binding ≠ React philosophy        |
-| **MVVM‑C** (MVVM + Coordinator) | Чистая навигация                                           | Всё ещё нужен binding             |
-| **MVI** (Model‑View‑Intent)     | Однонаправленный поток, Redux‑подобно                      | Болезненное иммутабельное дерево  |
-| **MVI‑C** (MVI + Coordinator)     | ✔ Однонаправлено, ✔ hooks‑friendly, ✔ минимум кода во View | Чуть сложнее для новичков         |
+## Realtime
 
-> **То с чем я работал:** **MVI** –
-> *Container* генерирует **Intents** (события UI), редьюсер превращает их в новое **Model** (состояние), а **View** (чистый компонент) лишь *отражает* состояние.
-> Под React‑hooks это выглядит естественно: `useReducer` внутри контейнера + контекст или props‑drilling.
+`services/ws.ts` connects to `/ws` through SockJS/STOMP and subscribes to user
+queues used by the backend:
 
+- `/user/queue/capsules/status`
+- `/user/queue/chat`
+
+`App.tsx` currently opens the WebSocket connection only where realtime is needed:
+account/profile capsule views and chat routes.
+
+## UI Components
+
+Use existing primitives in `components/ui` before adding another component:
+
+- `button`
+- `input`
+- `textarea`
+- `dialog`
+- `sheet`
+- `tabs`
+- `select`
+- `switch`
+- `avatar`
+- `dropdown-menu`
+- `label`
+- `separator`
+- `scroll-area`
+- `skeleton`
+
+Domain components are grouped by feature:
+
+- `capsules`: cards, detail, create/edit form, calendar, map, comments,
+  reactions, sharing, tags, media upload.
+- `chat`: conversation list and message window.
+- `users`: search, profile, user cards, followers/following views.
+- `admin`: admin shell, users workspace, audit workspace, capsules/tags/data
+  tables.
+- `auth`: auth layout, login, register, verification.
+
+## Styling Rules
+
+- Tailwind classes are the default styling mechanism.
+- Shared colors, radius, typography, and semantic tokens live in `index.css`.
+- Feature-specific CSS exists where the UI needs more than utility classes:
+  `auth-layout.css`, `create-capsule-form.css`, `chat-window.css`, and
+  `cosmic-landing-concept.css`.
+- Keep layout-stability in mind for fixed UI surfaces such as map controls,
+  chat panes, capsule cards, and admin tables.
+- Prefer existing page shells and visual language over introducing a new theme
+  for one feature.
+
+## Forms & Validation
+
+Important current forms:
+
+- login/register/verify
+- account profile and password change
+- create/edit capsule
+- location picker inside the capsule form
+- media, cover, avatar, tag image upload
+- user search
+- comments/replies/edit comment
+- share capsule dialog
+- chat composer with reply and attachment state
+- admin user/capsule/tag/data editors
+
+Validate user input before calling `api.ts`, but keep backend validation as the
+source of truth. Surface backend errors through the existing error/empty-state
+patterns.
+
+## Build & Lint
+
+Verified on 2026-04-19:
+
+```bash
+cd frontend
+bun run typecheck
+bun run build
+bun run lint
 ```
-[User Action] ---> Intent ---> Reducer ---> Model (state) ---> View(UI)
-                                         ▲
-                                         ╰────────────── side‑effects(api)
-```
 
-* UI‑слой остаётся «тупым» ⇒ упрощённые snapshot‑тесты.
-* Логику легко мемоизировать, мокать, покрывать unit‑тестами.
+Results:
 
----
+- `bun run typecheck`: passed.
+- `bun run build`: passed; Vite produced split `vendor`, `map-vendor`,
+  `3d-vendor`, and `realtime-vendor` chunks.
+- `bun run lint`: 0 errors, 16 warnings. Warnings are unused variables/args,
+  hook dependency warnings, and Fast Refresh export warnings.
 
-## 6 . API Service Layer
-
-```js
-// services/api.js
-import axios from 'axios';
-
-const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '/api',
-  withCredentials: true,
-});
-
-api.interceptors.response.use(
-  r => r,
-  err => {
-    // глобальный обработчик ошибок / toaster
-    return Promise.reject(err);
-  }
-);
-
-export default api;
-```
-
-* Точка входа одна; переиспользование 100 %.
-* В тестах мокаем через `axios-mock-adapter` — UI остаётся детерминированным.
-
----
-
-## 7 . Тестирование
-
-| Тип             | Инструмент | Что проверяем                     |
-| --------------- | ---------- | --------------------------------- |
-| **Unit**        | Jest + RTL | hook‑логика, редьюсеры, utils.    |
-| **Integration** | RTL        | контейнер + mock api / router.    |
-| **E2E**         | Playwright | сценарии пользователя в браузере. |
-
-Названия: `CreateEventForm.test.jsx`, `useParticipants.test.js`.
-CI: `npm run lint && npm test --coverage`.
-
----
-
-## 8 . Lint + CI
-
-* **ESLint** (airbnb‑config) + **Prettier** – обязательные git‑pre‑commit hooks (Husky).
-* Jest‑coverage ≥ 80 %.
-* GitHub Actions: lint → test → build → docker‑image → deploy.
-
----
-
-## 9 . TL;DR
-
-> **«Чистый UI, жирные контейнеры, одна ось данных»**
-> Компонент ничего не знает про fetch, только отображает props.
-> Любые данные проходят через: **sanitize → validate → service → reducer → view**.
-> Один стиль на весь проект – читаем, добавляем, кайфуем. ✨
+Do not document lint as clean until those warnings are resolved.

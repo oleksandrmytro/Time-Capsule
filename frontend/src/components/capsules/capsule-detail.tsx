@@ -144,7 +144,9 @@ export function CapsuleDetail({
   const hasShownUnlockAnimation = useRef(!capsule.isLocked)
   const prevLocked = useRef(capsule.isLocked)
   const navigate = useNavigate()
-  const canShare = isAuthenticated && (capsule.visibility === "public" || !!capsule.shareToken)
+  const isDraft = capsule.status === "draft"
+  const isOwner = !!capsule.ownerId && !!currentUserId && capsule.ownerId === currentUserId
+  const canShare = isAuthenticated && !isDraft && (capsule.visibility === "public" || !!capsule.shareToken)
   const hasLocation =
     Array.isArray(capsule.location?.coordinates) &&
     capsule.location.coordinates.length === 2 &&
@@ -388,7 +390,15 @@ export function CapsuleDetail({
               className="gap-1.5 rounded-lg border border-violet-300/45 bg-violet-400/28 text-violet-50 shadow-[0_8px_20px_rgba(124,92,255,0.2)] hover:bg-violet-400/38 hover:shadow-[0_10px_24px_rgba(124,92,255,0.26)]"
               onClick={() => canShare && setShareOpen(true)}
               disabled={!canShare}
-              title={canShare ? "Share this capsule" : "Sign in to share this capsule"}
+              title={
+                canShare
+                  ? "Share this capsule"
+                  : !isAuthenticated
+                  ? "Sign in to share this capsule"
+                  : isDraft
+                  ? "Draft capsules can be shared after sealing"
+                  : "This capsule cannot be shared"
+              }
             >
               <Share2 className="h-3.5 w-3.5" /> Share
             </Button>
@@ -526,6 +536,17 @@ export function CapsuleDetail({
             </div>
           ) : (
             <div className="space-y-5 px-5 pb-6 pt-6 sm:px-7 sm:pb-7 sm:pt-7">
+              {isDraft && (
+                <div className="rounded-xl border border-amber-300/20 bg-amber-400/8 px-4 py-3.5">
+                  <p className="text-sm font-semibold text-amber-100">Draft capsule</p>
+                  <p className="mt-1 text-sm text-amber-100/85">
+                    {isOwner
+                      ? "Only you can view this draft. It remains editable and has no scheduled unlock time until you seal it."
+                      : "Draft capsules are only visible to the owner in normal use and do not have a scheduled unlock time until they are sealed."}
+                  </p>
+                </div>
+              )}
+
               <div className="rounded-xl border border-cyan-300/18 bg-[linear-gradient(165deg,rgba(10,20,46,0.74)_0%,rgba(7,14,33,0.8)_100%)] px-4 py-3.5 sm:px-5">
                 <div className="flex items-center gap-1.5 text-cyan-100">
                   <FileText className="h-4 w-4" />
@@ -598,7 +619,7 @@ export function CapsuleDetail({
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-400">Unlock</p>
-                <p className="truncate text-sm font-medium text-slate-100">{formatMetaDate(capsule.unlockAt)}</p>
+                <p className="truncate text-sm font-medium text-slate-100">{isDraft ? "Not scheduled" : formatMetaDate(capsule.unlockAt)}</p>
               </div>
             </div>
 

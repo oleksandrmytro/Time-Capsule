@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, ArrowLeft, CalendarDays, Lock, Unlock } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SpaceBackgroundFrame } from "@/components/space-background-frame"
+import { resolveAssetUrl } from "@/lib/asset-url"
 import {
   startOfMonth,
   endOfMonth,
@@ -21,6 +22,11 @@ import { listCapsulesByDateRange, type Capsule } from "@/services/api"
 
 interface CalendarViewProps {
   onSelectCapsule?: (id: string) => void
+}
+
+function getCapsuleTimeLabel(capsule: Capsule) {
+  if (!capsule.unlockAt) return "No unlock time"
+  return format(new Date(capsule.unlockAt), "h:mm a")
 }
 
 export function CalendarView({ onSelectCapsule }: CalendarViewProps) {
@@ -57,7 +63,7 @@ export function CalendarView({ onSelectCapsule }: CalendarViewProps) {
   const days = eachDayOfInterval({ start: calStart, end: calEnd })
 
   const getCapsulesByDay = (day: Date) => {
-    return capsules.filter((capsule) => isSameDay(new Date(capsule.unlockAt), day))
+    return capsules.filter((capsule) => capsule.unlockAt != null && isSameDay(new Date(capsule.unlockAt), day))
   }
 
   const selectedCapsules = selectedDate ? getCapsulesByDay(selectedDate) : []
@@ -189,15 +195,15 @@ export function CalendarView({ onSelectCapsule }: CalendarViewProps) {
                     <button
                       key={capsule.id}
                       onClick={() => (onSelectCapsule ? onSelectCapsule(capsule.id) : navigate(`/capsules/${capsule.id}`))}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/16 bg-white/[0.08] p-3 text-left transition-colors hover:bg-white/[0.12]"
+                      className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/16 bg-white/[0.08] p-3 text-left transition-colors hover:bg-white/[0.12]"
                     >
                       {capsule.coverImageUrl && (
-                        <img src={capsule.coverImageUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                        <img src={resolveAssetUrl(capsule.coverImageUrl)} alt="" className="h-10 w-10 rounded-lg object-cover" />
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-100">{capsule.title}</p>
                         <p className="text-xs text-slate-300">
-                          {capsule.status === "sealed" ? "Locked" : "Opened"} • {format(new Date(capsule.unlockAt), "h:mm a")}
+                          {capsule.status === "sealed" ? "Locked" : "Opened"} - {getCapsuleTimeLabel(capsule)}
                         </p>
                       </div>
                       {capsule.tags && capsule.tags.length > 0 && (

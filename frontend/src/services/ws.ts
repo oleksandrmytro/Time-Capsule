@@ -30,7 +30,6 @@ export interface ChatWsMessage {
   timestamp: string
   status?: string
   userId?: string
-  isOnline?: boolean
   capsuleId?: string
   capsuleTitle?: string
   replyToMessageId?: string | null

@@ -21,9 +21,9 @@ services:
       -Dspring-boot.run.jvmArguments="$JAVA_DEBUG_OPTS"
     expose: ["8080", "35729"]
     ports:
-      - "8080:8080"   # API
-      - "35729:35729" # LiveReload (optional)
-      - "5005:5005"
+      - "127.0.0.1:8080:8080"   # local API debug only; browser traffic goes through nginx HTTPS
+      - "127.0.0.1:35729:35729" # LiveReload (optional)
+      - "127.0.0.1:5005:5005"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/ws/info"]
       interval: 10s
@@ -45,7 +45,7 @@ services:
       - HOST=0.0.0.0
       - CHOKIDAR_USEPOLLING=true
       - CHOKIDAR_INTERVAL=300
-      - VITE_API_URL=http://localhost/api
+      - VITE_API_URL=https://localhost/api
     volumes:
       - ../frontend:/app:cached
       - node-mod-cache:/app/node_modules
@@ -57,7 +57,9 @@ services:
   nginx:
     build: ../nginx
     env_file: dev.env
-    ports: ["80:80"]
+    ports:
+      - "80:80"
+      - "443:443"
     depends_on:
       frontend:
         condition: service_started

@@ -20,7 +20,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -41,12 +40,17 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final MongoTemplate mongoTemplate;
+    private final AuthCookieService authCookieService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public OAuth2AuthenticationSuccessHandler(UserRepository userRepository, JwtService jwtService, MongoTemplate mongoTemplate) {
+    public OAuth2AuthenticationSuccessHandler(UserRepository userRepository,
+                                              JwtService jwtService,
+                                              MongoTemplate mongoTemplate,
+                                              AuthCookieService authCookieService) {
         this.userRepository = userRepository;
         this.jwtService = jwtService;
         this.mongoTemplate = mongoTemplate;
+        this.authCookieService = authCookieService;
     }
 
     @Override
@@ -163,6 +167,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         if (shouldRedirect(request)) {
             sendRedirectWithCookies(request, response, redirectUri, tokens);
         } else {
+            authCookieService.writeAuthCookies(request, response, tokens);
             writeJsonResponse(response, tokens);
         }
     }
@@ -194,6 +199,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
     }
 
     private void sendRejectedResponse(HttpServletRequest request, HttpServletResponse response, String redirectUri, String reason) throws IOException {
+        authCookieService.clearAuthCookies(response);
         if (shouldRedirect(request)) {
             String target = UriComponentsBuilder.fromUriString(redirectUri)
                     .queryParam("success", "false")
@@ -207,11 +213,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
     }
 
     private void sendRedirectWithCookies(HttpServletRequest request, HttpServletResponse response, String redirectUri, LoginResponse tokens) throws IOException {
-        // Set HttpOnly cookies for access and refresh tokens
-        String accessCookie = buildCookie(request, "accessToken", tokens.getAccessToken(), (int) (tokens.getExpiresIn() / 1000));
-        String refreshCookie = buildCookie(request, "refreshToken", tokens.getRefreshToken(), (int) (tokens.getRefreshExpiresIn() / 1000));
-        response.addHeader("Set-Cookie", accessCookie);
-        response.addHeader("Set-Cookie", refreshCookie);
+        authCookieService.writeAuthCookies(request, response, tokens);
 
         String target = UriComponentsBuilder.fromUriString(redirectUri)
                 .queryParam("success", "true")
@@ -222,50 +224,15 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
         response.sendRedirect(target);
     }
 
-    private String buildCookie(HttpServletRequest request, String name, String value, int maxAgeSeconds) {
-        boolean secure = request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"));
-        String sameSite = resolveSameSite(request, secure);
-        return name + "=" + value + "; HttpOnly; SameSite=" + sameSite + "; Path=/; Max-Age=" + maxAgeSeconds + (secure ? "; Secure" : "");
-    }
-
-    private String resolveSameSite(HttpServletRequest request, boolean secure) {
-        if (secure && isCrossSiteRequest(request)) {
-            return "None";
-        }
-        return "Lax";
-    }
-
-    private boolean isCrossSiteRequest(HttpServletRequest request) {
-        String fetchSite = request.getHeader("Sec-Fetch-Site");
-        if ("cross-site".equalsIgnoreCase(fetchSite)) {
-            return true;
-        }
-
-        String origin = request.getHeader("Origin");
-        if (origin == null || origin.isBlank()) {
-            return false;
-        }
-
-        try {
-            URI uri = URI.create(origin);
-            String originHost = uri.getHost();
-            return originHost != null && !originHost.equalsIgnoreCase(request.getServerName());
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
     private void writeJsonResponse(HttpServletResponse response, LoginResponse tokens) throws IOException {
+        authCookieService.applyNoStore(response);
         response.setStatus(HttpServletResponse.SC_OK);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json;charset=UTF-8");
 
         Map<String, Object> payload = new HashMap<>();
-        payload.put("accessToken", tokens.getAccessToken());
-        payload.put("refreshToken", tokens.getRefreshToken());
         payload.put("expiresIn", tokens.getExpiresIn());
         payload.put("refreshExpiresIn", tokens.getRefreshExpiresIn());
-        payload.put("tokenType", "Bearer");
         payload.put("mustChangePassword", tokens.isMustChangePassword());
         payload.put("impersonating", tokens.isImpersonating());
         payload.put("actingAdminId", tokens.getActingAdminId());
@@ -276,6 +243,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
     }
 
     private void writeJsonErrorResponse(HttpServletResponse response, String reason) throws IOException {
+        authCookieService.applyNoStore(response);
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setContentType("application/json;charset=UTF-8");

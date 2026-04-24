@@ -1,7 +1,6 @@
 package com.oleksandrmytro.timecapsule.services;
 
 import com.oleksandrmytro.timecapsule.dto.CreateCapsuleRequest;
-import com.oleksandrmytro.timecapsule.dto.ShareCapsuleRequest;
 import com.oleksandrmytro.timecapsule.dto.UpdateCapsuleRequest;
 import com.oleksandrmytro.timecapsule.events.CapsuleStatusEvent;
 import com.oleksandrmytro.timecapsule.models.Capsule;
@@ -82,19 +81,25 @@ public class CapsuleService {
         validateCapsuleRequest(request);
 
         CapsuleVisibility visibility = CapsuleVisibility.fromValue(request.getVisibility());
+        CapsuleStatus status = resolveCreateStatus(request);
+        Instant unlockAt = normalizeUnlockAt(status, request.getUnlockAt());
+        Instant expiresAt = normalizeExpiresAt(status, unlockAt, request.getExpiresAt());
+        Instant now = Instant.now();
+        boolean publicVisibility = CapsuleVisibility.PUBLIC.equals(visibility) && !status.isDraft();
 
         Capsule capsule = new Capsule();
         capsule.setOwnerId(new ObjectId(ownerId));
-        capsule.setTitle(request.getTitle());
-        capsule.setBody(request.getBody());
+        capsule.setTitle(request.getTitle().trim());
+        capsule.setBody(normalizeBlankToNull(request.getBody()));
         capsule.setVisibility(visibility);
-        capsule.setStatus(request.getStatus());
-        capsule.setUnlockAt(request.getUnlockAt());
-        capsule.setExpiresAt(request.getExpiresAt());
-        capsule.setAllowComments(request.getAllowComments() != null ? request.getAllowComments() : true);
-        capsule.setAllowReactions(request.getAllowReactions() != null ? request.getAllowReactions() : true);
-        capsule.setTags(request.getTags());
-        capsule.setCoverImageUrl(request.getCoverImageUrl());
+        capsule.setStatus(status);
+        capsule.setUnlockAt(unlockAt);
+        capsule.setExpiresAt(expiresAt);
+        capsule.setOpenedAt(CapsuleStatus.OPENED.equals(status) ? now : null);
+        capsule.setAllowComments(publicVisibility && Boolean.TRUE.equals(request.getAllowComments()));
+        capsule.setAllowReactions(publicVisibility && Boolean.TRUE.equals(request.getAllowReactions()));
+        capsule.setTags(normalizeTags(request.getTags()));
+        capsule.setCoverImageUrl(normalizeBlankToNull(request.getCoverImageUrl()));
         capsule.setMedia(mapMediaRequest(request.getMedia()));
 
         Capsule.GeoPoint requestedLocation = normalizeGeo(mapGeo(request.getLocation()));
@@ -102,13 +107,13 @@ public class CapsuleService {
         capsule.setGeoMarkerId(null);
 
         // Генерація токена для спільних капсул
-        if (CapsuleVisibility.SHARED.equals(visibility)) {
+        if (CapsuleVisibility.SHARED.equals(visibility) && !status.isDraft()) {
             capsule.setShareToken(generateShareToken());
         }
 
         // Зберігаємо відмічену дату створення/оновлення
-        capsule.setCreatedAt(Instant.now());
-        capsule.setUpdatedAt(Instant.now());
+        capsule.setCreatedAt(now);
+        capsule.setUpdatedAt(now);
 
         Capsule saved = capsuleRepository.save(capsule);
         if (requestedLocation != null) {
@@ -159,15 +164,17 @@ public class CapsuleService {
 
         CapsuleVisibility visibility = CapsuleVisibility.fromValue(request.getVisibility());
         CapsuleStatus targetStatus = CapsuleStatus.fromValue(request.getStatus());
+        Instant unlockAt = normalizeUnlockAt(targetStatus, request.getUnlockAt());
+        Instant expiresAt = normalizeExpiresAt(targetStatus, unlockAt, request.getExpiresAt());
 
         capsule.setTitle(request.getTitle().trim());
         capsule.setBody(normalizeBlankToNull(request.getBody()));
         capsule.setVisibility(visibility);
-        capsule.setStatus(targetStatus.getValue());
-        capsule.setUnlockAt(request.getUnlockAt());
-        capsule.setExpiresAt(request.getExpiresAt());
+        capsule.setStatus(targetStatus);
+        capsule.setUnlockAt(unlockAt);
+        capsule.setExpiresAt(expiresAt);
 
-        boolean publicVisibility = CapsuleVisibility.PUBLIC.equals(visibility);
+        boolean publicVisibility = CapsuleVisibility.PUBLIC.equals(visibility) && !CapsuleStatus.DRAFT.equals(targetStatus);
         capsule.setAllowComments(publicVisibility && Boolean.TRUE.equals(request.getAllowComments()));
         capsule.setAllowReactions(publicVisibility && Boolean.TRUE.equals(request.getAllowReactions()));
         capsule.setTags(normalizeTags(request.getTags()));
@@ -183,7 +190,9 @@ public class CapsuleService {
             capsule.setOpenedAt(null);
         }
 
-        if (CapsuleVisibility.SHARED.equals(visibility) &&
+        if (CapsuleStatus.DRAFT.equals(targetStatus)) {
+            capsule.setShareToken(null);
+        } else if (CapsuleVisibility.SHARED.equals(visibility) &&
                 (capsule.getShareToken() == null || capsule.getShareToken().isBlank())) {
             capsule.setShareToken(generateShareToken());
         }
@@ -215,7 +224,6 @@ public class CapsuleService {
                 .set("title", capsule.getTitle())
                 .set("visibility", capsule.getVisibility())
                 .set("status", capsule.getStatus())
-                .set("unlockAt", capsule.getUnlockAt())
                 .set("allowComments", capsule.getAllowComments())
                 .set("allowReactions", capsule.getAllowReactions())
                 .set("tags", capsule.getTags() != null ? capsule.getTags() : List.of())
@@ -232,6 +240,12 @@ public class CapsuleService {
             persistUpdate.set("expiresAt", capsule.getExpiresAt());
         } else {
             persistUpdate.unset("expiresAt");
+        }
+
+        if (capsule.getUnlockAt() != null) {
+            persistUpdate.set("unlockAt", capsule.getUnlockAt());
+        } else {
+            persistUpdate.unset("unlockAt");
         }
 
         if (capsule.getCoverImageUrl() != null) {
@@ -308,7 +322,10 @@ public class CapsuleService {
             }
         }
 
-        if (request.getExpiresAt() != null && request.getUnlockAt() != null && !request.getExpiresAt().isAfter(request.getUnlockAt())) {
+        if (!CapsuleStatus.DRAFT.equals(status)
+                && request.getExpiresAt() != null
+                && request.getUnlockAt() != null
+                && !request.getExpiresAt().isAfter(request.getUnlockAt())) {
             throw new IllegalArgumentException("Expiration date must be after unlock date");
         }
 
@@ -330,21 +347,56 @@ public class CapsuleService {
     }
 
     private void validateCapsuleRequest(CreateCapsuleRequest request) {
-        CapsuleStatus status = CapsuleStatus.fromValue(request.getStatus());
+        CapsuleStatus status = resolveCreateStatus(request);
         if (CapsuleStatus.SEALED.equals(status)) {
             if (request.getUnlockAt() == null) {
                 throw new IllegalArgumentException("Unlock date is required for sealed capsules");
             }
-            if (request.getUnlockAt().isBefore(Instant.now())) {
+            if (!request.getUnlockAt().isAfter(Instant.now())) {
                 throw new IllegalArgumentException("Unlock date must be in the future for sealed capsules");
             }
         }
 
-        if (request.getExpiresAt() != null && request.getUnlockAt() != null) {
-            if (request.getExpiresAt().isBefore(request.getUnlockAt())) {
-                throw new IllegalArgumentException("Expiration date must be after unlock date");
-            }
+        if (!status.isDraft()
+                && request.getExpiresAt() != null
+                && request.getUnlockAt() != null
+                && !request.getExpiresAt().isAfter(request.getUnlockAt())) {
+            throw new IllegalArgumentException("Expiration date must be after unlock date");
         }
+    }
+
+    private CapsuleStatus resolveCreateStatus(CreateCapsuleRequest request) {
+        CapsuleStatus status = CapsuleStatus.fromValue(request.getStatus());
+        return status != null ? status : CapsuleStatus.DRAFT;
+    }
+
+    private Instant normalizeUnlockAt(CapsuleStatus status, Instant unlockAt) {
+        return status != null && status.isDraft() ? null : unlockAt;
+    }
+
+    private Instant normalizeExpiresAt(CapsuleStatus status, Instant unlockAt, Instant expiresAt) {
+        if (status != null && status.isDraft()) {
+            return null;
+        }
+        if (unlockAt == null) {
+            return null;
+        }
+        return expiresAt;
+    }
+
+    private boolean isDraft(Capsule capsule) {
+        if (capsule == null) {
+            return false;
+        }
+        CapsuleStatus status = CapsuleStatus.fromValue(capsule.getStatus());
+        return status != null && status.isDraft();
+    }
+
+    private boolean isPubliclyAccessible(Capsule capsule) {
+        if (capsule == null || isDraft(capsule)) {
+            return false;
+        }
+        return CapsuleVisibility.PUBLIC.equals(CapsuleVisibility.fromValue(capsule.getVisibility()));
     }
 
     private String generateShareToken() {
@@ -383,8 +435,11 @@ public class CapsuleService {
         List<Capsule> capsules = capsuleRepository.findByVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(
                 CapsuleVisibility.PUBLIC.getValue()
         );
-        Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(capsules);
-        return capsules.stream()
+        List<Capsule> visibleCapsules = capsules.stream()
+                .filter(this::isPubliclyAccessible)
+                .collect(Collectors.toList());
+        Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(visibleCapsules);
+        return visibleCapsules.stream()
                 .map(c -> toResponse(c, locationsByCapsuleId))
                 .collect(Collectors.toList());
     }
@@ -402,6 +457,9 @@ public class CapsuleService {
         } else {
         // Інший користувач — тільки публічні капсули
             capsules = capsuleRepository.findByOwnerIdAndVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(owner, CapsuleVisibility.PUBLIC.getValue());
+            capsules = capsules.stream()
+                    .filter(this::isPubliclyAccessible)
+                    .collect(Collectors.toList());
         }
         Map<String, Capsule.GeoPoint> locationsByCapsuleId = resolveGeoLocationsByCapsuleId(capsules);
         return capsules.stream()
@@ -457,6 +515,11 @@ public class CapsuleService {
             throw new IllegalArgumentException("Capsule not found");
         }
 
+        boolean isOwner = capsule.getOwnerId() != null && Objects.equals(capsule.getOwnerId().toHexString(), ownerId);
+        if (isDraft(capsule) && !isOwner) {
+            throw new IllegalArgumentException("Capsule not found");
+        }
+
         return toResponse(capsule);
     }
 
@@ -496,6 +559,9 @@ public class CapsuleService {
         Query findQuery = new Query(Criteria.where("_id").is(capsuleId).and("deletedAt").is(null));
         Capsule capsule = mongoTemplate.findOne(findQuery, Capsule.class);
         if (capsule == null) throw new IllegalArgumentException("Capsule not found");
+        if (isDraft(capsule)) {
+            throw new IllegalArgumentException("Draft capsules cannot be shared until they are sealed");
+        }
 
         // Перевіряємо права доступу:
         // - власник може ділитись завжди
@@ -806,7 +872,7 @@ public class CapsuleService {
             String ownerId = capsule.getOwnerId().toHexString();
             boolean isOwn = ownerId.equals(currentUserId);
             boolean isPublic = CapsuleVisibility.PUBLIC.equals(CapsuleVisibility.fromValue(capsule.getVisibility()));
-            if (!isOwn && !isPublic) {
+            if ((!isOwn && !isPublic) || (isDraft(capsule) && !isOwn)) {
                 continue;
             }
 
@@ -1103,7 +1169,7 @@ public class CapsuleService {
         Capsule capsule = capsuleRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new IllegalArgumentException("Capsule not found"));
 
-        if (CapsuleVisibility.PUBLIC.equals(CapsuleVisibility.fromValue(capsule.getVisibility()))) {
+        if (isPubliclyAccessible(capsule)) {
             return toResponse(capsule);
         }
 

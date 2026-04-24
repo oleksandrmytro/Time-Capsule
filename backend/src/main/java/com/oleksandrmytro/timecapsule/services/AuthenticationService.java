@@ -2,7 +2,6 @@ package com.oleksandrmytro.timecapsule.services;
 
 import com.oleksandrmytro.timecapsule.dto.LoginUserDto;
 import com.oleksandrmytro.timecapsule.dto.RegisterUserDto;
-import com.oleksandrmytro.timecapsule.dto.RefreshTokenRequest;
 import com.oleksandrmytro.timecapsule.dto.VerifyUserDto;
 import com.oleksandrmytro.timecapsule.models.AdminAuditLog;
 import com.oleksandrmytro.timecapsule.models.PendingUser;
@@ -209,8 +208,7 @@ public class AuthenticationService {
         return buildTokens(user);
     }
 
-    public LoginResponse refreshTokens(RefreshTokenRequest request) {
-        String refreshToken = request.getRefreshToken();
+    public LoginResponse refreshTokens(String refreshToken) {
         // extractUsername повертає subject з JWT — тепер це userId (раніше був email)
         String subject = jwtService.extractUsername(refreshToken);
         // Шукаємо по userId (новий формат), fallback на email (старі токени)
@@ -228,8 +226,7 @@ public class AuthenticationService {
         return buildTokens(user, impersonation);
     }
 
-    public LoginResponse refreshWithRotationCheck(RefreshTokenRequest request) {
-        String refreshToken = request.getRefreshToken();
+    public LoginResponse refreshWithRotationCheck(String refreshToken) {
         // extractUsername повертає subject з JWT — тепер це userId (раніше був email)
         String subject = jwtService.extractUsername(refreshToken);
         // Шукаємо по userId (новий формат), fallback на email (старі токени)

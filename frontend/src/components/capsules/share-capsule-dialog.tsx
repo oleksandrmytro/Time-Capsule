@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Share2, Search, Check, Loader2, Send } from "lucide-react"
+import { Search, Check, Loader2, Send } from "lucide-react"
 import { type UserData } from "@/components/users/user-card"
 import { shareCapsule } from "@/services/api"
 import { resolveAssetUrl } from "@/lib/asset-url"

@@ -1,5 +1,6 @@
 package com.oleksandrmytro.timecapsule.responses;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -28,6 +29,7 @@ public class LoginResponse {
         this.impersonating = false;
     }
 
+    @JsonIgnore
     public String getAccessToken() {
         return accessToken;
     }
@@ -36,6 +38,7 @@ public class LoginResponse {
         return expiresIn;
     }
 
+    @JsonIgnore
     public String getRefreshToken() {
         return refreshToken;
     }

@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/status-badge"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
 import { CapsulesMapView } from "@/components/capsules/capsules-map-view"
+import { resolveAssetUrl } from "@/lib/asset-url"
 import type { Capsule, CapsuleMapMarker } from "@/services/api"
 
 interface ProfileCapsulesGridProps {
@@ -25,7 +26,32 @@ type ProfileMapFocusState = {
 
 function resolveVisibleCapsules(capsules: Capsule[], isOwnProfile: boolean) {
   if (isOwnProfile) return capsules
-  return capsules.filter((capsule) => capsule.visibility !== "private")
+  return capsules.filter((capsule) => capsule.visibility === "public" && capsule.status !== "draft")
+}
+
+function formatScheduleDate(value?: string | null) {
+  if (!value) return null
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
+
+function getCapsuleScheduleText(capsule: Capsule) {
+  if (capsule.status === "draft") {
+    return "No unlock date yet"
+  }
+
+  if (capsule.status === "opened") {
+    return capsule.openedAt ? `Opened ${formatScheduleDate(capsule.openedAt)}` : "Opened recently"
+  }
+
+  if (capsule.unlockAt) {
+    return `Unlocks ${formatScheduleDate(capsule.unlockAt)}`
+  }
+
+  return "Unlock date not scheduled"
 }
 
 export function ProfileCapsulesGrid({
@@ -234,7 +260,7 @@ function CapsuleGridItem({ capsule, onClick, isFocused = false }: { capsule: Cap
       <div className="relative mt-3 overflow-hidden rounded-xl border border-white/12 bg-slate-900/55">
         {coverSrc ? (
           <img
-            src={coverSrc}
+            src={resolveAssetUrl(coverSrc)}
             alt={capsule.title}
             className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105 sm:h-32 lg:h-36"
             loading="lazy"
@@ -273,14 +299,7 @@ function CapsuleGridItem({ capsule, onClick, isFocused = false }: { capsule: Cap
           </div>
         )}
 
-        <p className="text-[11px] text-slate-400">
-          Unlocks{" "}
-          {new Date(capsule.unlockAt).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </p>
+        <p className="text-[11px] text-slate-400">{getCapsuleScheduleText(capsule)}</p>
       </div>
     </button>
   )
@@ -305,7 +324,7 @@ function CapsuleListItem({ capsule, onClick, isFocused = false }: { capsule: Cap
       <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/12 bg-slate-900/55 sm:h-14 sm:w-14">
         {coverSrc ? (
           <img
-            src={coverSrc}
+            src={resolveAssetUrl(coverSrc)}
             alt={capsule.title}
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
             loading="lazy"
@@ -346,14 +365,7 @@ function CapsuleListItem({ capsule, onClick, isFocused = false }: { capsule: Cap
           </div>
         )}
 
-        <p className="text-[11px] text-slate-400">
-          Unlocks{" "}
-          {new Date(capsule.unlockAt).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })}
-        </p>
+        <p className="text-[11px] text-slate-400">{getCapsuleScheduleText(capsule)}</p>
       </div>
     </button>
   )

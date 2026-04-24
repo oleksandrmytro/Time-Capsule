@@ -1,5 +1,6 @@
 package com.oleksandrmytro.timecapsule.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -18,6 +19,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -46,6 +48,7 @@ public class SecurityConfiguration {
      * репозиторій OAuth2-клієнтів (Google, GitHub).
      */
     private final ClientRegistrationRepository clientRegistrationRepository;
+    private final List<String> corsAllowedOrigins;
 
     /**
      * Інжектить всі залежності для роботи з безпекою, JWT, OAuth2.
@@ -55,13 +58,18 @@ public class SecurityConfiguration {
             AuthenticationProvider authenticationProvider,
             OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler,
             OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler,
-            ClientRegistrationRepository clientRegistrationRepository
+            ClientRegistrationRepository clientRegistrationRepository,
+            @Value("${cors.allowed-origins:https://localhost,https://localhost:443,https://localhost:5173,http://localhost,http://localhost:5173,http://localhost:80}") String corsAllowedOrigins
     ) {
         this.authenticationProvider = authenticationProvider;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.oAuth2AuthenticationSuccessHandler = oAuth2AuthenticationSuccessHandler;
         this.oAuth2AuthenticationFailureHandler = oAuth2AuthenticationFailureHandler;
         this.clientRegistrationRepository = clientRegistrationRepository;
+        this.corsAllowedOrigins = Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList();
     }
 
     @Bean
@@ -169,7 +177,7 @@ public class SecurityConfiguration {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost", "http://localhost:5173", "http://localhost:80"));           // Дозволяє запити з цих origin (фронтенд працює на localhost:5173)
+        configuration.setAllowedOrigins(corsAllowedOrigins);           // Дозволяє запити з цих origin (фронтенд працює на localhost:5173)
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));            // Дозволяє ці HTTP-методи для CORS-запитів
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));          // Дозволяє ці заголовки в CORS-запитах (Authorization для JWT, Content-Type для JSON)
         configuration.setAllowCredentials(true);            // Дозволяє відправляти куки та авторизаційні заголовки в CORS-запитах

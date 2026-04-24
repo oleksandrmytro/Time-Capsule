@@ -1,7 +1,7 @@
 // MongoDB JSON Schema for mongosh - capsules (MVP)
 var capsuleSchema = {
   bsonType: "object",
-  required: ["ownerId", "title", "visibility", "status", "unlockAt"],
+  required: ["ownerId", "title", "visibility", "status"],
   properties: {
     _id: { bsonType: "objectId" },
     ownerId: { bsonType: "objectId" },
@@ -20,9 +20,9 @@ var capsuleSchema = {
     },
     visibility: { enum: ["private", "public", "shared"] },
     status: { enum: ["draft", "sealed", "opened"] },
-    unlockAt: { bsonType: "date" },
-    openedAt: { bsonType: "date" },
-    expiresAt: { bsonType: "date" },
+    unlockAt: { bsonType: ["date", "null"] },
+    openedAt: { bsonType: ["date", "null"] },
+    expiresAt: { bsonType: ["date", "null"] },
     geoMarkerId: { bsonType: "objectId" },
     location: {
       bsonType: "object",

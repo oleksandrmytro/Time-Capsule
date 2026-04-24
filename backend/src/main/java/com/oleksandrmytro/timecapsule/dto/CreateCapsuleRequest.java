@@ -3,10 +3,8 @@ package com.oleksandrmytro.timecapsule.dto;
 import com.oleksandrmytro.timecapsule.models.enums.CapsuleStatus;
 import com.oleksandrmytro.timecapsule.models.enums.CapsuleVisibility;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import jakarta.validation.constraints.Future;
 import java.time.Instant;
 import java.util.List;
 
@@ -24,11 +22,9 @@ public class CreateCapsuleRequest {
     @Pattern(regexp = CapsuleVisibility.REGEX, message = "Visibility must be one of: private, public, shared")
     private String visibility; // private | public | shared
 
-    @NotBlank(message = "Status is required")
     @Pattern(regexp = CapsuleStatus.REGEX, message = "Status must be one of: draft, sealed, opened")
-    private String status; // draft | sealed | opened
+    private String status; // draft | sealed | opened, defaults to draft
 
-    @NotNull(message = "Unlock date is required")
     private Instant unlockAt;
 
     private Instant expiresAt;

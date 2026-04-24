@@ -29,7 +29,6 @@ export interface UserProfile {
   bio?: string
   location?: string
   website?: string
-  isOnline?: boolean
   isFollowing?: boolean
   followersCount?: number
   followingCount?: number
@@ -50,7 +49,6 @@ export interface UserPublic {
   avatarUrl?: string
   bio?: string
   isFollowing?: boolean
-  isOnline?: boolean
   followersCount?: number
   followingCount?: number
   capsulesCount?: number
@@ -63,7 +61,6 @@ export interface ChatConversation {
     username: string
     displayName: string
     avatar?: string
-    isOnline: boolean
   }
   lastMessage: {
     text: string
@@ -133,7 +130,7 @@ export interface Capsule {
   status: 'draft' | 'sealed' | 'opened'
   visibility: 'private' | 'public' | 'shared'
   isLocked: boolean
-  unlockAt: string
+  unlockAt?: string | null
   openedAt?: string | null
   expiresAt?: string | null
   geoMarkerId?: string | null
@@ -149,9 +146,9 @@ export interface Capsule {
 export interface CreateCapsulePayload {
   title: string
   body?: string | null
-  visibility: string
-  status: string
-  unlockAt: string
+  visibility: 'private' | 'public' | 'shared'
+  status?: 'draft' | 'sealed' | 'opened'
+  unlockAt?: string | null
   expiresAt?: string | null
   allowComments: boolean
   allowReactions: boolean
@@ -164,9 +161,9 @@ export interface CreateCapsulePayload {
 export interface UpdateCapsulePayload {
   title: string
   body?: string | null
-  visibility: string
-  status: string
-  unlockAt: string
+  visibility: 'private' | 'public' | 'shared'
+  status: 'draft' | 'sealed' | 'opened'
+  unlockAt?: string | null
   expiresAt?: string | null
   allowComments: boolean
   allowReactions: boolean
@@ -632,7 +629,6 @@ export interface AdminUser {
   enabled: boolean
   status?: 'active' | 'blocked' | 'disabled' | 'deleted'
   mustChangePassword?: boolean
-  isOnline: boolean
   avatarUrl: string
   createdAt: string
   blockedUntil?: string
@@ -646,7 +642,7 @@ export interface AdminCapsule {
   status: string
   visibility: string
   ownerId: string
-  unlockAt: string
+  unlockAt?: string | null
   expiresAt?: string
   createdAt: string
   updatedAt?: string

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate, Routes, Route, useLocation } from "react-router-dom"
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CoverUploader } from "@/components/capsules/cover-uploader"
@@ -21,9 +23,10 @@ import {
   adminUpdateCapsule, adminUpdateTag, adminListCollections, adminListCollectionDocs,
   adminUpdateCollectionDoc, adminDeleteCollectionDoc, adminRestoreUser, adminBulkUsers,
   adminRestoreCapsule, adminBulkCapsules, adminCreateTag, adminBulkTags, adminListAuditLogs,
-  uploadTagImage, uploadCoverImage, uploadCapsuleAttachment, getUserProfile,
+  uploadTagImage, uploadCoverImage, uploadAvatarImage, uploadCapsuleAttachment, getUserProfile,
   type AdminUser, type AdminCapsule, type Tag as TagType, type AdminCollectionDoc, type AdminAuditLog, type MediaItem, type UserProfile, type ApiError
 } from "@/services/api"
+import { resolveAssetUrl } from "@/lib/asset-url"
 import { IMAGE_ACCEPT_ATTR, MEDIA_ACCEPT_ATTR } from "@/lib/media-types"
 import { resolveTagImageUrl } from "@/lib/tag-image-url"
 
@@ -32,6 +35,14 @@ const KNOWN_SYSTEM_TAG_COVER_NAMES = new Set([
   "travel", "birthday", "wedding", "graduation", "family", "friends", "love", "memory",
   "achievement", "holiday", "music", "nature", "food", "sport", "art", "pet", "default",
 ])
+const adminSelectTriggerClass =
+  "w-full justify-between border-white/15 bg-slate-900/45 text-sm text-slate-100 hover:bg-slate-900/70 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-400/15 data-[placeholder]:text-slate-400"
+const adminSelectTriggerCompactClass =
+  "h-9 min-w-[160px] justify-between border-white/15 bg-[#111827] px-2 text-xs text-slate-100 hover:bg-slate-900/70 focus-visible:border-cyan-300/40 focus-visible:ring-cyan-400/15 data-[placeholder]:text-slate-400"
+const adminSelectContentClass =
+  "border-white/15 bg-[#111827] text-slate-100 shadow-2xl"
+const adminSelectItemClass =
+  "text-slate-100 focus:bg-cyan-400/15 focus:text-cyan-50 data-[state=checked]:bg-cyan-500/10 data-[state=checked]:text-cyan-100"
 
 function normalizeAdminCoverUrl(rawUrl: string | null | undefined): string {
   if (!rawUrl) return ""
@@ -293,7 +304,7 @@ function AdminUsersTable() {
     try {
       let avatarUrl = editAvatarUrl || null
       if (editAvatarFile) {
-        avatarUrl = await uploadCoverImage(editAvatarFile)
+        avatarUrl = await uploadAvatarImage(editAvatarFile)
       }
 
       const updates: Record<string, unknown> = {
@@ -366,24 +377,30 @@ function AdminUsersTable() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select value={bulkAction} onChange={(e) => setUserBulkAction(e.target.value)} className="h-9 rounded border border-border bg-background px-2 text-xs">
-          <option value="disable">Disable</option>
-          <option value="enable">Enable</option>
-          <option value="delete">Soft delete</option>
-          <option value="restore">Restore</option>
-          <option value="role">Set role</option>
-          <option value="block">Block until date</option>
-          <option value="unblock">Unblock</option>
-        </select>
+        <Select value={bulkAction} onValueChange={setUserBulkAction}>
+          <SelectTrigger className={adminSelectTriggerCompactClass}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className={adminSelectContentClass}>
+            <SelectItem value="disable" className={adminSelectItemClass}>Disable</SelectItem>
+            <SelectItem value="enable" className={adminSelectItemClass}>Enable</SelectItem>
+            <SelectItem value="delete" className={adminSelectItemClass}>Soft delete</SelectItem>
+            <SelectItem value="restore" className={adminSelectItemClass}>Restore</SelectItem>
+            <SelectItem value="role" className={adminSelectItemClass}>Set role</SelectItem>
+            <SelectItem value="block" className={adminSelectItemClass}>Block until date</SelectItem>
+            <SelectItem value="unblock" className={adminSelectItemClass}>Unblock</SelectItem>
+          </SelectContent>
+        </Select>
         {bulkAction === "role" && (
-          <select
-            value={bulkValue || "regular"}
-            onChange={(e) => setBulkValue(e.target.value)}
-            className="h-9 w-[220px] rounded border border-border bg-background px-2 text-xs"
-          >
-            <option value="regular">regular</option>
-            <option value="admin">admin</option>
-          </select>
+          <Select value={bulkValue || "regular"} onValueChange={setBulkValue}>
+            <SelectTrigger className={`${adminSelectTriggerCompactClass} w-[220px]`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className={adminSelectContentClass}>
+              <SelectItem value="regular" className={adminSelectItemClass}>regular</SelectItem>
+              <SelectItem value="admin" className={adminSelectItemClass}>admin</SelectItem>
+            </SelectContent>
+          </Select>
         )}
         {bulkAction === "block" && (
           <Input
@@ -432,19 +449,15 @@ function AdminUsersTable() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        {user.avatarUrl ? (
-                          <img src={user.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
-                        ) : (
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-xs font-bold text-secondary-foreground">
-                            {(user.username || "?")[0]?.toUpperCase()}
-                          </div>
-                        )}
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={resolveAssetUrl(user.avatarUrl)} alt={user.username || user.email || "user"} />
+                          <AvatarFallback className="bg-secondary text-xs font-bold text-secondary-foreground">
+                            {(user.username || user.email || "?").slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
                         <div>
                           <p className="font-medium text-foreground">{user.username || "—"}</p>
-                          <div className="flex items-center gap-1">
-                            {user.isOnline && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
-                            <span className="text-xs text-muted-foreground">{user.isOnline ? "Online" : "Offline"}</span>
-                          </div>
+                          <p className="text-xs text-muted-foreground">{user.email || "вЂ”"}</p>
                         </div>
                       </div>
                     </td>
@@ -546,7 +559,7 @@ function AdminUsersTable() {
           <div className="space-y-2">
             <Label>Avatar</Label>
             {editAvatarUrl && !editAvatarFile ? (
-              <img src={editAvatarUrl} alt="user avatar" className="h-16 w-16 rounded-full object-cover" />
+              <img src={resolveAssetUrl(editAvatarUrl)} alt="user avatar" className="h-16 w-16 rounded-full object-cover" />
             ) : null}
             {editAvatarFile ? <p className="text-xs text-muted-foreground">Selected: {editAvatarFile.name}</p> : null}
             <Input
@@ -558,26 +571,28 @@ function AdminUsersTable() {
 
           <div className="space-y-2">
             <Label>Role</Label>
-            <select
-              value={editRole}
-              onChange={(e) => setEditRole(e.target.value)}
-              className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-            >
-              <option value="regular">regular</option>
-              <option value="admin">admin</option>
-            </select>
+            <Select value={editRole} onValueChange={setEditRole}>
+              <SelectTrigger className={adminSelectTriggerClass}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={adminSelectContentClass}>
+                <SelectItem value="regular" className={adminSelectItemClass}>regular</SelectItem>
+                <SelectItem value="admin" className={adminSelectItemClass}>admin</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
             <Label>Status</Label>
-            <select
-              value={editEnabled ? "enabled" : "disabled"}
-              onChange={(e) => setEditEnabled(e.target.value === "enabled")}
-              className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
-            >
-              <option value="enabled">enabled</option>
-              <option value="disabled">disabled</option>
-            </select>
+            <Select value={editEnabled ? "enabled" : "disabled"} onValueChange={(value) => setEditEnabled(value === "enabled")}>
+              <SelectTrigger className={adminSelectTriggerClass}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className={adminSelectContentClass}>
+                <SelectItem value="enabled" className={adminSelectItemClass}>enabled</SelectItem>
+                <SelectItem value="disabled" className={adminSelectItemClass}>disabled</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
@@ -866,33 +881,40 @@ function AdminCapsulesTable() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select value={bulkAction} onChange={(e) => setCapsuleBulkAction(e.target.value)} className="h-9 rounded border border-white/15 bg-[#111827] px-2 text-xs text-slate-100">
-          <option value="delete">Soft delete</option>
-          <option value="restore">Restore</option>
-          <option value="status">Set status</option>
-          <option value="visibility">Set visibility</option>
-        </select>
+        <Select value={bulkAction} onValueChange={setCapsuleBulkAction}>
+          <SelectTrigger className={adminSelectTriggerCompactClass}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className={adminSelectContentClass}>
+            <SelectItem value="delete" className={adminSelectItemClass}>Soft delete</SelectItem>
+            <SelectItem value="restore" className={adminSelectItemClass}>Restore</SelectItem>
+            <SelectItem value="status" className={adminSelectItemClass}>Set status</SelectItem>
+            <SelectItem value="visibility" className={adminSelectItemClass}>Set visibility</SelectItem>
+          </SelectContent>
+        </Select>
         {bulkAction === "status" && (
-          <select
-            value={bulkValue || "draft"}
-            onChange={(e) => setBulkValue(e.target.value)}
-            className="h-9 w-[180px] rounded border border-white/15 bg-[#111827] px-2 text-xs text-slate-100"
-          >
-            <option value="draft">draft</option>
-            <option value="sealed">sealed</option>
-            <option value="opened">opened</option>
-          </select>
+          <Select value={bulkValue || "draft"} onValueChange={setBulkValue}>
+            <SelectTrigger className={`${adminSelectTriggerCompactClass} w-[180px]`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className={adminSelectContentClass}>
+              <SelectItem value="draft" className={adminSelectItemClass}>draft</SelectItem>
+              <SelectItem value="sealed" className={adminSelectItemClass}>sealed</SelectItem>
+              <SelectItem value="opened" className={adminSelectItemClass}>opened</SelectItem>
+            </SelectContent>
+          </Select>
         )}
         {bulkAction === "visibility" && (
-          <select
-            value={bulkValue || "private"}
-            onChange={(e) => setBulkValue(e.target.value)}
-            className="h-9 w-[180px] rounded border border-white/15 bg-[#111827] px-2 text-xs text-slate-100"
-          >
-            <option value="private">private</option>
-            <option value="public">public</option>
-            <option value="shared">shared</option>
-          </select>
+          <Select value={bulkValue || "private"} onValueChange={setBulkValue}>
+            <SelectTrigger className={`${adminSelectTriggerCompactClass} w-[180px]`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className={adminSelectContentClass}>
+              <SelectItem value="private" className={adminSelectItemClass}>private</SelectItem>
+              <SelectItem value="public" className={adminSelectItemClass}>public</SelectItem>
+              <SelectItem value="shared" className={adminSelectItemClass}>shared</SelectItem>
+            </SelectContent>
+          </Select>
         )}
         <Button size="sm" className="border border-cyan-300/25 bg-cyan-500/20 text-cyan-50 hover:bg-cyan-500/35" disabled={selectedIds.length === 0} onClick={applyBulk}>Apply bulk ({selectedIds.length})</Button>
       </div>
@@ -1039,19 +1061,29 @@ function AdminCapsulesTable() {
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
-              <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="h-10 w-full rounded-md border border-white/15 bg-slate-900/45 px-3 text-sm text-slate-100">
-                <option value="draft">draft</option>
-                <option value="sealed">sealed</option>
-                <option value="opened">opened</option>
-              </select>
+              <Select value={editStatus} onValueChange={setEditStatus}>
+                <SelectTrigger className={adminSelectTriggerClass}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className={adminSelectContentClass}>
+                  <SelectItem value="draft" className={adminSelectItemClass}>draft</SelectItem>
+                  <SelectItem value="sealed" className={adminSelectItemClass}>sealed</SelectItem>
+                  <SelectItem value="opened" className={adminSelectItemClass}>opened</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Visibility</Label>
-              <select value={editVisibility} onChange={(e) => setEditVisibility(e.target.value)} className="h-10 w-full rounded-md border border-white/15 bg-slate-900/45 px-3 text-sm text-slate-100">
-                <option value="private">private</option>
-                <option value="public">public</option>
-                <option value="shared">shared</option>
-              </select>
+              <Select value={editVisibility} onValueChange={setEditVisibility}>
+                <SelectTrigger className={adminSelectTriggerClass}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className={adminSelectContentClass}>
+                  <SelectItem value="private" className={adminSelectItemClass}>private</SelectItem>
+                  <SelectItem value="public" className={adminSelectItemClass}>public</SelectItem>
+                  <SelectItem value="shared" className={adminSelectItemClass}>shared</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Unlock At</Label>
@@ -1070,7 +1102,7 @@ function AdminCapsulesTable() {
                 <div className="inline-flex items-center gap-2 rounded-lg border border-white/12 bg-slate-900/50 px-2.5 py-1.5">
                   {editOwnerProfile.avatarUrl ? (
                     <img
-                      src={editOwnerProfile.avatarUrl}
+                      src={resolveAssetUrl(editOwnerProfile.avatarUrl)}
                       alt={editOwnerProfile.username || "Owner"}
                       className="h-7 w-7 rounded-full border border-white/15 object-cover"
                     />
@@ -1579,9 +1611,18 @@ function AdminDataTable() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <select value={collection} onChange={(e) => setCollection(e.target.value)} className="h-10 rounded-md border border-white/15 bg-[#111827] px-3 text-sm text-slate-100">
-          {collections.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        <Select value={collection} onValueChange={setCollection}>
+          <SelectTrigger className={`${adminSelectTriggerClass} w-[240px] bg-[#111827]`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className={adminSelectContentClass}>
+            {collections.map((c) => (
+              <SelectItem key={c} value={c} className={adminSelectItemClass}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <div className="relative min-w-[260px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input

@@ -20,12 +20,20 @@ import java.nio.charset.StandardCharsets;
 @Component
 public class OAuth2AuthenticationFailureHandler extends SimpleUrlAuthenticationFailureHandler {
 
+    private final AuthCookieService authCookieService;
+
     @Value("${frontend.url:http://localhost:5173}")
     private String frontendUrl;
+
+    public OAuth2AuthenticationFailureHandler(AuthCookieService authCookieService) {
+        this.authCookieService = authCookieService;
+    }
 
     @Override
     public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
                                         AuthenticationException exception) throws IOException, ServletException {
+        authCookieService.clearAuthCookies(response);
+        authCookieService.applyNoStore(response);
 
         String errorMessage = exception.getLocalizedMessage();
         

@@ -146,9 +146,9 @@ export function CommentsSection({
   }
 
   return (
-    <section className="rounded-2xl border border-white/12 bg-slate-900/48 p-4 backdrop-blur-xl sm:p-5">
+    <section className="rounded-lg border border-white/12 bg-slate-900/48 p-4 backdrop-blur-xl sm:p-5">
       <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/24 bg-cyan-300/12">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-cyan-300/24 bg-cyan-300/12">
           <MessageCircle className="h-5 w-5 text-cyan-100" />
         </div>
         <div>
@@ -162,10 +162,10 @@ export function CommentsSection({
       {isAuthenticated ? (
         <div className="space-y-3">
           {replyingTo && (
-            <div className="mb-3 flex items-center justify-between rounded-lg border border-violet-300/26 bg-violet-400/12 px-3 py-2 text-xs text-slate-200">
+            <div className="mb-3 flex items-center justify-between rounded-lg border border-cyan-300/24 bg-cyan-300/10 px-3 py-2 text-xs text-slate-200">
               <div className="flex min-w-0 items-center gap-2">
-                <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-violet-100" />
-                <span className="shrink-0 font-semibold text-violet-100">Replying to {replyingTo.username}</span>
+                <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-cyan-100" />
+                <span className="shrink-0 font-semibold text-cyan-100">Replying to {replyingTo.username}</span>
                 <span className="line-clamp-1 text-slate-300">{replyingTo.body}</span>
               </div>
               <button
@@ -196,10 +196,10 @@ export function CommentsSection({
             }}
             placeholder={replyingTo ? `Reply to ${replyingTo.username}...` : "Write a comment..."}
             disabled={submitting || replySubmitting}
-            className={`min-h-[96px] resize-y rounded-xl border text-sm text-slate-100 placeholder:text-slate-400 transition-all ${
+            className={`min-h-[96px] resize-y rounded-lg border text-sm text-slate-100 placeholder:text-slate-400 transition-all ${
               isFocused || body.trim() || replyingTo
-                ? "border-violet-300/50 bg-[#071024]/90 shadow-[0_0_24px_rgba(124,92,255,0.14)] focus-visible:border-violet-300/60 focus-visible:ring-violet-300/48"
-                : "border-white/12 bg-[#060d1f]/82 focus-visible:border-violet-300/52 focus-visible:ring-violet-300/45"
+                ? "border-cyan-300/42 bg-[#071024]/90 focus-visible:border-cyan-300/55 focus-visible:ring-cyan-300/25"
+                : "border-white/12 bg-[#060d1f]/82 focus-visible:border-cyan-300/45 focus-visible:ring-cyan-300/20"
             }`}
             maxLength={2000}
           />
@@ -228,7 +228,7 @@ export function CommentsSection({
                 <Button
                   type="button"
                   size="sm"
-                  className="gap-1.5 border border-violet-300/28 bg-violet-500/85 text-slate-50 hover:bg-violet-500"
+                  className="gap-1.5 border border-cyan-300/30 bg-cyan-500/80 text-slate-950 hover:bg-cyan-400"
                   disabled={
                     replyingTo
                       ? !replyBody.trim() || replySubmitting
@@ -251,7 +251,7 @@ export function CommentsSection({
           )}
         </div>
       ) : (
-        <p className="rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-sm text-slate-400">
+        <p className="rounded-lg border border-white/12 bg-white/[0.03] px-3 py-2 text-sm text-slate-400">
           Sign in to leave a comment.
         </p>
       )}
@@ -273,7 +273,7 @@ export function CommentsSection({
             return (
               <div
                 key={comment.id}
-                className="group rounded-xl border border-white/10 bg-[#060d1f]/78 p-3 transition-colors hover:bg-[#091229]/86 sm:p-4"
+                className="group rounded-lg border border-white/10 bg-[#060d1f]/78 p-3 transition-colors hover:bg-[#091229]/86 sm:p-4"
               >
                 <div className="flex items-start gap-3">
                   <Avatar className="h-9 w-9 shrink-0 border border-white/12">
@@ -315,7 +315,7 @@ export function CommentsSection({
                           <DropdownMenuContent align="end" className="border-white/14 bg-[#091126]/95 text-slate-100">
                             <DropdownMenuItem
                               onClick={() => handleStartEdit(comment)}
-                              className="cursor-pointer focus:bg-violet-500/18 focus:text-slate-100"
+                              className="cursor-pointer focus:bg-cyan-500/16 focus:text-slate-100"
                             >
                               <Pencil className="mr-2 h-4 w-4" /> Edit
                             </DropdownMenuItem>
@@ -352,7 +352,7 @@ export function CommentsSection({
                         <Textarea
                           value={editBody}
                           onChange={(event) => setEditBody(event.target.value)}
-                          className="min-h-[90px] resize-y border-white/10 bg-white/[0.03] text-sm text-slate-100 focus-visible:border-violet-300/55 focus-visible:ring-violet-300/45"
+                          className="min-h-[90px] resize-y border-white/10 bg-white/[0.03] text-sm text-slate-100 focus-visible:border-cyan-300/50 focus-visible:ring-cyan-300/22"
                           maxLength={2000}
                           autoFocus
                         />
@@ -370,7 +370,7 @@ export function CommentsSection({
                           <Button
                             type="button"
                             size="sm"
-                            className="gap-1.5 border border-violet-300/28 bg-violet-500/85 text-slate-50 hover:bg-violet-500"
+                            className="gap-1.5 border border-cyan-300/30 bg-cyan-500/80 text-slate-950 hover:bg-cyan-400"
                             disabled={!editBody.trim() || editSubmitting}
                             onClick={() => handleSaveEdit(comment.id)}
                           >
@@ -385,7 +385,7 @@ export function CommentsSection({
                       </div>
                     ) : (
                       <>
-                        <p className="break-words whitespace-pre-wrap rounded-xl border border-white/10 bg-[#0b152d]/72 px-3 py-2 text-sm leading-relaxed text-slate-100">
+                        <p className="break-words whitespace-pre-wrap rounded-lg border border-white/10 bg-slate-950/35 px-3 py-2 text-sm leading-relaxed text-slate-100">
                           {comment.body}
                         </p>
                         {isAuthenticated && (

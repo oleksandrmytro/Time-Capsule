@@ -13,7 +13,7 @@ import { CoverUploader } from "@/components/capsules/cover-uploader"
 import { TagPicker } from "@/components/capsules/tag-picker"
 import { MediaUploader, type MediaFile } from "@/components/media/media-uploader"
 import { getApiBase, uploadCapsuleAttachment, uploadCoverImage } from "@/services/api"
-import type { ApiError, Capsule, CreateCapsulePayload, MediaItem } from "@/services/api"
+import type { ApiError, Capsule, CreateCapsulePayload, MediaItem, UpdateCapsulePayload } from "@/services/api"
 import { SpaceBackgroundFrame } from "@/components/space-background-frame"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
@@ -28,7 +28,7 @@ interface NominatimPlace {
 }
 
 interface CreateCapsuleFormProps {
-  onSubmit: (data: CreateCapsulePayload) => Promise<Capsule>
+  onSubmit: (data: UpdateCapsulePayload) => Promise<Capsule>
   onCancel?: () => void
   error: ApiError | null
   initialCapsule?: Capsule | null
@@ -191,8 +191,8 @@ export function CreateCapsuleForm({
   const [expiresAt, setExpiresAt] = useState("")
   const [tags, setTags] = useState<string[]>([])
   const [coverValue, setCoverValue] = useState<File | string | null>(null)
-  const [visibility, setVisibility] = useState("private")
-  const [status, setStatus] = useState("sealed")
+  const [visibility, setVisibility] = useState<Capsule["visibility"]>("private")
+  const [status, setStatus] = useState<Capsule["status"]>("draft")
   const [allowComments, setAllowComments] = useState(true)
   const [allowReactions, setAllowReactions] = useState(true)
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([])
@@ -229,7 +229,7 @@ export function CreateCapsuleForm({
     setTags(Array.isArray(initialCapsule.tags) ? initialCapsule.tags : [])
     setCoverValue(initialCapsule.coverImageUrl || null)
     setVisibility(initialCapsule.visibility || "private")
-    setStatus(initialCapsule.status || "sealed")
+    setStatus(initialCapsule.status || "draft")
     setAllowComments(Boolean(initialCapsule.allowComments))
     setAllowReactions(Boolean(initialCapsule.allowReactions))
     setExistingMedia(Array.isArray(initialCapsule.media) ? initialCapsule.media : [])
@@ -263,11 +263,11 @@ export function CreateCapsuleForm({
   }, [isEditMode, initialCapsule])
 
   useEffect(() => {
-    if (visibility !== "public") {
+    if (visibility !== "public" || status === "draft") {
       setAllowComments(false)
       setAllowReactions(false)
     }
-  }, [visibility])
+  }, [visibility, status])
 
   const error = parentError || localError
 
@@ -276,6 +276,7 @@ export function CreateCapsuleForm({
   const maxDate = new Date("2100-12-31T23:59")
   const minDateString = minDate.toISOString().slice(0, 16)
   const maxDateString = maxDate.toISOString().slice(0, 16)
+  const requiresUnlockSchedule = status === "sealed"
 
   const sectionCardClass = "rounded-2xl border border-white/12 bg-slate-900/40 p-4 backdrop-blur-xl shadow-[0_20px_54px_rgba(2,6,23,0.38)] sm:p-5"
   const sectionTitleClass = "text-xs font-semibold uppercase tracking-[0.16em] text-slate-300/80"
@@ -520,30 +521,33 @@ export function CreateCapsuleForm({
       setLocalError({ status: 0, message: "Title is required" })
       return
     }
-    if (!unlockAt) {
-      setLocalError({ status: 0, message: "Unlock date is required" })
-      return
-    }
-
-    const unlockDate = new Date(unlockAt)
     const now = new Date()
+    let unlockDate: Date | null = null
 
-    if (Number.isNaN(unlockDate.getTime())) {
-      setLocalError({ status: 0, message: "Unlock date is invalid" })
-      return
+    if (requiresUnlockSchedule) {
+      if (!unlockAt) {
+        setLocalError({ status: 0, message: "Unlock date is required" })
+        return
+      }
+
+      unlockDate = new Date(unlockAt)
+      if (Number.isNaN(unlockDate.getTime())) {
+        setLocalError({ status: 0, message: "Unlock date is invalid" })
+        return
+      }
+
+      if (unlockDate <= now) {
+        setLocalError({ status: 0, message: "Unlock date must be in the future for sealed capsules" })
+        return
+      }
+
+      if (unlockDate.getFullYear() > 2100) {
+        setLocalError({ status: 0, message: "Unlock year cannot exceed 2100" })
+        return
+      }
     }
 
-    if (status === "sealed" && unlockDate <= now) {
-      setLocalError({ status: 0, message: "Unlock date must be in the future for sealed capsules" })
-      return
-    }
-
-    if (unlockDate.getFullYear() > 2100) {
-      setLocalError({ status: 0, message: "Unlock year cannot exceed 2100" })
-      return
-    }
-
-    if (expiresAt) {
+    if (requiresUnlockSchedule && expiresAt) {
       const expiresDate = new Date(expiresAt)
       if (Number.isNaN(expiresDate.getTime())) {
         setLocalError({ status: 0, message: "Expiry date is invalid" })
@@ -553,7 +557,7 @@ export function CreateCapsuleForm({
         setLocalError({ status: 0, message: "Expiry year cannot exceed 2100" })
         return
       }
-      if (expiresDate <= unlockDate) {
+      if (!unlockDate || expiresDate <= unlockDate) {
         setLocalError({ status: 0, message: "Expiry date must be after unlock date" })
         return
       }
@@ -603,8 +607,8 @@ export function CreateCapsuleForm({
         body: trimmedBody || null,
         visibility,
         status,
-        unlockAt: new Date(unlockAt).toISOString(),
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+        unlockAt: requiresUnlockSchedule && unlockDate ? unlockDate.toISOString() : null,
+        expiresAt: requiresUnlockSchedule && expiresAt ? new Date(expiresAt).toISOString() : null,
         allowComments,
         allowReactions,
         tags: tags.length > 0 ? tags : null,
@@ -663,7 +667,7 @@ export function CreateCapsuleForm({
                 {isEditMode ? "Edit Time Capsule" : "Create Time Capsule"}
               </h1>
               <p className="mt-1 text-sm text-slate-300">
-                {isEditMode ? "Update your capsule details and save changes." : "Write it today. Reopen it in the future."}
+                {isEditMode ? "Update your capsule details and save changes." : "Start with a private draft, then seal it when you're ready."}
               </p>
 
               <div className="mt-5 flex flex-col gap-4">
@@ -708,7 +712,7 @@ export function CreateCapsuleForm({
                   <Label className="text-sm font-medium text-slate-200">
                     Visibility <span className="text-rose-300">*</span>
                   </Label>
-                  <Select value={visibility} onValueChange={setVisibility}>
+                  <Select value={visibility} onValueChange={(value) => setVisibility(value as Capsule["visibility"])}>
                     <SelectTrigger className={selectTriggerClass}><SelectValue placeholder="Select visibility" /></SelectTrigger>
                     <SelectContent className={selectContentClass}>
                       <SelectItem value="private" className={selectItemClass}>
@@ -728,51 +732,60 @@ export function CreateCapsuleForm({
                   <Label className="text-sm font-medium text-slate-200">
                     Status <span className="text-rose-300">*</span>
                   </Label>
-                  <Select value={status} onValueChange={setStatus}>
+                  <Select value={status} onValueChange={(value) => setStatus(value as Capsule["status"])}>
                     <SelectTrigger className={selectTriggerClass}><SelectValue placeholder="Select status" /></SelectTrigger>
                     <SelectContent className={selectContentClass}>
                       <SelectItem value="draft" className={selectItemClass}>Draft</SelectItem>
                       <SelectItem value="sealed" className={selectItemClass}>Sealed</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-slate-400">
+                    Draft capsules are visible only to you and do not have an unlock date until you seal them.
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="unlockAt" className="text-sm font-medium text-slate-200">
-                    Unlock Date <span className="text-rose-300">*</span>
-                  </Label>
-                  <Input
-                    id="unlockAt"
-                    name="unlockAt"
-                    type="datetime-local"
-                    className={pickerInputClass}
-                    min={status === "sealed" ? minDateString : undefined}
-                    max={maxDateString}
-                    required
-                    value={unlockAt}
-                    onChange={(e) => setUnlockAt(e.target.value)}
-                  />
-                </div>
+              {requiresUnlockSchedule ? (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="unlockAt" className="text-sm font-medium text-slate-200">
+                      Unlock Date <span className="text-rose-300">*</span>
+                    </Label>
+                    <Input
+                      id="unlockAt"
+                      name="unlockAt"
+                      type="datetime-local"
+                      className={pickerInputClass}
+                      min={minDateString}
+                      max={maxDateString}
+                      required={requiresUnlockSchedule}
+                      value={unlockAt}
+                      onChange={(e) => setUnlockAt(e.target.value)}
+                    />
+                  </div>
 
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="expiresAt" className="text-sm font-medium text-slate-200">Expires Date</Label>
-                  <Input
-                    id="expiresAt"
-                    name="expiresAt"
-                    type="datetime-local"
-                    className={pickerInputClass}
-                    min={unlockAt || (status === "sealed" ? minDateString : undefined)}
-                    max={maxDateString}
-                    value={expiresAt}
-                    onChange={(e) => setExpiresAt(e.target.value)}
-                  />
-                  <p className="text-xs text-slate-400">Optional</p>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="expiresAt" className="text-sm font-medium text-slate-200">Expires Date</Label>
+                    <Input
+                      id="expiresAt"
+                      name="expiresAt"
+                      type="datetime-local"
+                      className={pickerInputClass}
+                      min={unlockAt || minDateString}
+                      max={maxDateString}
+                      value={expiresAt}
+                      onChange={(e) => setExpiresAt(e.target.value)}
+                    />
+                    <p className="text-xs text-slate-400">Optional</p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-4 rounded-xl border border-cyan-300/18 bg-cyan-300/8 px-4 py-3 text-sm text-cyan-100">
+                  This capsule stays in Draft without a scheduled unlock time. Add the unlock date after switching it to Sealed.
+                </div>
+              )}
 
-              {visibility === "public" && (
+              {visibility === "public" && status !== "draft" && (
                 <div className="mt-4 grid gap-3 rounded-xl border border-white/12 bg-white/[0.03] p-3 sm:grid-cols-2">
                   <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2.5">
                     <div>
@@ -788,6 +801,12 @@ export function CreateCapsuleForm({
                     </div>
                     <Switch className={switchClass} checked={allowReactions} onCheckedChange={setAllowReactions} />
                   </div>
+                </div>
+              )}
+
+              {visibility === "public" && status === "draft" && (
+                <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/8 px-4 py-3 text-sm text-amber-100">
+                  Draft capsules stay owner-only even if Public is selected. Comments and reactions become available after you seal the capsule.
                 </div>
               )}
 
