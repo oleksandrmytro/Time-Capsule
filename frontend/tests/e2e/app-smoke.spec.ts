@@ -31,7 +31,7 @@ test('renders public landing page and navigates to login', async ({ page }) => {
 
   await page.goto('/')
 
-  await expect(page.getByRole('button', { name: /TimeCapsule/i })).toBeVisible()
+  await expect(page.getByRole('banner').getByRole('button', { name: /TimeCapsule/i })).toBeVisible()
   await expect(page.getByRole('button', { name: /Login/i })).toBeVisible()
 
   await page.getByRole('button', { name: /Login/i }).click()
