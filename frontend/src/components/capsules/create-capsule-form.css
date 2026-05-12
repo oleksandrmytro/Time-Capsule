@@ -1,0 +1,21 @@
+.capsule-dark-input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+.capsule-dark-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.94) saturate(0.72) hue-rotate(182deg) brightness(1.04);
+  opacity: 0.9;
+  cursor: pointer;
+}
+
+.capsule-dark-input[type="datetime-local"]::-webkit-datetime-edit {
+  color: #f1f5f9;
+}
+
+.capsule-dark-input[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper {
+  color: #f1f5f9;
+}
+
+.capsule-dark-input[type="datetime-local"]::-webkit-datetime-edit-text {
+  color: #94a3b8;
+}
