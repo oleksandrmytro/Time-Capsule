@@ -26,6 +26,7 @@ export interface UserProfile {
   username?: string
   displayName?: string
   avatarUrl?: string
+  isOnline?: boolean
   bio?: string
   location?: string
   website?: string
@@ -47,6 +48,7 @@ export interface UserPublic {
   displayName: string
   avatar?: string
   avatarUrl?: string
+  isOnline?: boolean
   bio?: string
   isFollowing?: boolean
   followersCount?: number
@@ -61,6 +63,7 @@ export interface ChatConversation {
     username: string
     displayName: string
     avatar?: string
+    isOnline?: boolean
   }
   lastMessage: {
     text: string

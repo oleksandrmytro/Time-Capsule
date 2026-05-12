@@ -11,9 +11,14 @@ import java.util.Optional;
 @Repository
 public interface FollowRepository extends MongoRepository<Follow, String> {
     List<Follow> findByUserIdAndDeletedAtIsNull(ObjectId userId);
+
     List<Follow> findByFollowerIdAndDeletedAtIsNull(ObjectId followerId);
+
     boolean existsByUserIdAndFollowerIdAndDeletedAtIsNull(ObjectId userId, ObjectId followerId);
+
     Optional<Follow> findByUserIdAndFollowerIdAndDeletedAtIsNull(ObjectId userId, ObjectId followerId);
+
     long countByUserIdAndDeletedAtIsNull(ObjectId userId);
+
     long countByFollowerIdAndDeletedAtIsNull(ObjectId followerId);
 }

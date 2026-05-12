@@ -11,8 +11,11 @@ import java.util.Optional;
 @Repository
 public interface ShareRepository extends MongoRepository<Share, String> {
     Optional<Share> findByCapsuleIdAndGranteeIdAndDeletedAtIsNull(ObjectId capsuleId, ObjectId granteeId);
+
     boolean existsByCapsuleIdAndGranteeIdAndDeletedAtIsNull(ObjectId capsuleId, ObjectId granteeId);
+
     List<Share> findByGranteeIdAndDeletedAtIsNull(ObjectId granteeId);
+
     List<Share> findByCapsuleIdAndDeletedAtIsNull(ObjectId capsuleId);
 }
 

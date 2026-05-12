@@ -15,7 +15,7 @@ import {
   uploadChatAttachment,
   type ChatMessage,
 } from "@/services/api"
-import { setChatCallbacks, type ChatWsMessage } from "@/services/ws"
+import { addChatMessageListener, type ChatWsMessage } from "@/services/ws"
 import {
   MEDIA_ACCEPT_ATTR,
   MEDIA_FILE_EXTENSIONS,
@@ -40,6 +40,7 @@ interface ChatUser {
   username: string
   displayName: string
   avatar?: string
+  isOnline?: boolean
 }
 
 type DisplayMessage = ChatMessage
@@ -75,6 +76,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
           username: conversation.user.username || userId,
           displayName: conversation.user.displayName || conversation.user.username || userId,
           avatar: conversation.user.avatar,
+          isOnline: conversation.user.isOnline,
         }
       }
     } catch {
@@ -91,6 +93,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
             username: entry.username || userId,
             displayName: entry.displayName || entry.username || userId,
             avatar: entry.avatar || entry.avatarUrl,
+            isOnline: entry.isOnline,
           }
         }
       } catch {
@@ -105,6 +108,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
         username: profile.username || userId,
         displayName: profile.displayName || profile.username || userId,
         avatar: profile.avatarUrl,
+        isOnline: profile.isOnline,
       }
     } catch {
       return { id: userId, username: userId, displayName: userId }
@@ -140,7 +144,12 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
 
   const handleWsMessage = useCallback(
     (msg: ChatWsMessage) => {
-      if (msg.type === "presence") return
+      if (msg.type === "presence") {
+        if (msg.userId === userId && typeof msg.isOnline === "boolean") {
+          setUser((current) => current ? { ...current, isOnline: msg.isOnline } : current)
+        }
+        return
+      }
       if (msg.fromUserId !== userId && !msg.fromMe) return
       const normalizedType = msg.type || msg.mediaKind || "text"
 
@@ -169,8 +178,7 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
   )
 
   useEffect(() => {
-    setChatCallbacks({ onMessage: handleWsMessage })
-    return () => setChatCallbacks({})
+    return addChatMessageListener(handleWsMessage)
   }, [handleWsMessage])
 
   useEffect(() => {
@@ -400,6 +408,11 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
               {user.displayName.slice(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
+          <span
+            className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[#17335f] ${user.isOnline ? "bg-emerald-400" : "bg-slate-500"}`}
+            aria-label={user.isOnline ? "Online" : "Offline"}
+            title={user.isOnline ? "Online" : "Offline"}
+          />
         </button>
         <div className="min-w-0 flex-1">
           <button
@@ -408,7 +421,9 @@ export function ChatWindow({ userId, currentUserId }: ChatWindowProps) {
           >
             {user.displayName}
           </button>
-          <p className="text-xs text-slate-400">@{user.username}</p>
+          <p className="text-xs text-slate-400">
+            @{user.username} - {user.isOnline ? "Online" : "Offline"}
+          </p>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

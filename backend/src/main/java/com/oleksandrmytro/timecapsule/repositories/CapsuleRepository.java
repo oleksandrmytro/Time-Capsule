@@ -9,10 +9,16 @@ import java.util.Optional;
 
 public interface CapsuleRepository extends MongoRepository<Capsule, String> {
     List<Capsule> findByOwnerIdAndDeletedAtIsNullOrderByCreatedAtDesc(ObjectId ownerId);
+
     Optional<Capsule> findByIdAndOwnerIdAndDeletedAtIsNull(String id, ObjectId ownerId);
+
     Optional<Capsule> findByIdAndDeletedAtIsNull(String id);
+
     List<Capsule> findByVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(String visibility);
+
     long countByOwnerIdAndDeletedAtIsNull(ObjectId ownerId);
+
     long countByOwnerIdAndVisibilityAndDeletedAtIsNull(ObjectId ownerId, String visibility);
+
     List<Capsule> findByOwnerIdAndVisibilityAndDeletedAtIsNullOrderByCreatedAtDesc(ObjectId ownerId, String visibility);
 }

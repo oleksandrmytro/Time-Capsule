@@ -12,6 +12,7 @@ public class UserProfileResponse {
     private String avatarUrl;
     private String role;
     private boolean enabled;
+    private boolean online;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<AuthProvider> authProviders;
@@ -40,6 +41,10 @@ public class UserProfileResponse {
     public void setRole(String role) { this.role = role; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    @JsonProperty("isOnline")
+    public boolean isOnline() { return online; }
+    @JsonProperty("isOnline")
+    public void setOnline(boolean online) { this.online = online; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

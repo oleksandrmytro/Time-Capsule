@@ -9,6 +9,7 @@ import java.util.List;
 
 @Repository
 public interface ChatMessageRepository extends MongoRepository<ChatMessage, String> {
+
     List<ChatMessage> findByFromUserIdAndToUserIdOrFromUserIdAndToUserIdOrderByCreatedAtAsc(ObjectId from, ObjectId to, ObjectId from2, ObjectId to2);
     List<ChatMessage> findByFromUserIdOrToUserIdOrderByCreatedAtDesc(ObjectId from, ObjectId to);
 }

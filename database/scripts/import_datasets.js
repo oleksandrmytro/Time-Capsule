@@ -20,7 +20,8 @@ const COLLECTION_ORDER = [
   "notifications",
   "reminders",
   "geomarkers",
-  "feed_events"
+  "feed_events",
+  "admin_audit_logs"
 ];
 
 function splitCsvLine(line) {

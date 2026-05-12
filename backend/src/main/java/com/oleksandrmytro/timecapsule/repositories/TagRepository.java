@@ -9,6 +9,7 @@ import java.util.Optional;
 
 public interface TagRepository extends MongoRepository<Tag, String> {
     Optional<Tag> findByNameIgnoreCase(String name);
+
     List<Tag> findByIsSystemTrue();
     List<Tag> findByIsSystemTrueOrCreatedBy(ObjectId createdBy);
     List<Tag> findByNameContainingIgnoreCase(String query);

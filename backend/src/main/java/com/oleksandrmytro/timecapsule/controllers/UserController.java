@@ -192,6 +192,7 @@ public class UserController {
         resp.setAvatarUrl(user.getAvatarUrl());
         resp.setRole(user.getRoleDb());
         resp.setEnabled(user.isEnabled());
+        resp.setOnline(user.isOnline());
         resp.setCreatedAt(user.getCreatedAt());
         resp.setUpdatedAt(user.getUpdatedAt());
         resp.setMustChangePassword(user.isMustChangePassword());

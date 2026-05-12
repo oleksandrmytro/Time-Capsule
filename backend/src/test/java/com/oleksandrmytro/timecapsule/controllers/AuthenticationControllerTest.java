@@ -12,6 +12,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -37,8 +38,12 @@ class AuthenticationControllerTest {
     @MockBean
     private AdminAuditLogRepository adminAuditLogRepository;
 
+    @MockBean
+    private com.oleksandrmytro.timecapsule.config.AuthCookieService authCookieService;
+
     @Test
     void refreshReturnsOk() throws Exception {
+        given(authCookieService.requireRefreshTokenCookie(any())).willReturn("dummy");
         given(authenticationService.refreshTokens(eq("dummy"))).willReturn(new LoginResponse("access", 1000, "refresh", 2000));
 
         mockMvc.perform(post("/api/auth/refresh").cookie(new Cookie("refreshToken", "dummy")))
@@ -51,6 +56,7 @@ class AuthenticationControllerTest {
 
     @Test
     void refreshCheckReturns304WhenNoRotation() throws Exception {
+        given(authCookieService.requireRefreshTokenCookie(any())).willReturn("dummy");
         given(authenticationService.refreshWithRotationCheck(eq("dummy"))).willReturn(null);
 
         mockMvc.perform(post("/api/auth/refresh/check").cookie(new Cookie("refreshToken", "dummy")))

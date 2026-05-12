@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Search, Loader2, MessageCircle } from "lucide-react"
 import { getConversations, type ChatConversation, getFollowing, type UserPublic } from "@/services/api"
+import { addChatMessageListener, type ChatWsMessage } from "@/services/ws"
 import { resolveAssetUrl } from "@/lib/asset-url"
 
 interface ChatListProps {
@@ -34,6 +35,25 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
       setConversations([])
     }).finally(() => setLoading(false))
   }, [currentUserId])
+
+  const handlePresence = useCallback((msg: ChatWsMessage) => {
+    if (msg.type !== "presence" || !msg.userId || typeof msg.isOnline !== "boolean") return
+
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.user.id === msg.userId
+          ? { ...conv, user: { ...conv.user, isOnline: msg.isOnline } }
+          : conv,
+      ),
+    )
+    setFollowing((prev) =>
+      prev.map((user) =>
+        user.id === msg.userId ? { ...user, isOnline: msg.isOnline } : user,
+      ),
+    )
+  }, [])
+
+  useEffect(() => addChatMessageListener(handlePresence), [handlePresence])
 
   const filteredConvs = conversations.filter((conv) =>
     conv.user.displayName.toLowerCase().includes(search.toLowerCase()) || conv.user.username.toLowerCase().includes(search.toLowerCase())
@@ -92,6 +112,11 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
                       {conv.user.displayName.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
+                  <span
+                    className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-[#15305e] ${conv.user.isOnline ? "bg-emerald-400" : "bg-slate-500"}`}
+                    aria-label={conv.user.isOnline ? "Online" : "Offline"}
+                    title={conv.user.isOnline ? "Online" : "Offline"}
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start gap-2">
@@ -127,6 +152,11 @@ export function ChatList({ selectedUserId, currentUserId }: ChatListProps) {
                             {u.displayName.slice(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
+                        <span
+                          className={`absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#17335f] ${u.isOnline ? "bg-emerald-400" : "bg-slate-500"}`}
+                          aria-label={u.isOnline ? "Online" : "Offline"}
+                          title={u.isOnline ? "Online" : "Offline"}
+                        />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-100">{u.displayName}</p>

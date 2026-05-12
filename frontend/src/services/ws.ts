@@ -30,6 +30,7 @@ export interface ChatWsMessage {
   timestamp: string
   status?: string
   userId?: string
+  isOnline?: boolean
   capsuleId?: string
   capsuleTitle?: string
   replyToMessageId?: string | null
@@ -39,9 +40,15 @@ export interface ChatWsMessage {
 }
 
 let chatCallbacks: ChatStreamCallbacks = {}
+const chatListeners = new Set<(msg: ChatWsMessage) => void>()
 
 export function setChatCallbacks(cb: ChatStreamCallbacks): void {
   chatCallbacks = cb
+}
+
+export function addChatMessageListener(listener: (msg: ChatWsMessage) => void): () => void {
+  chatListeners.add(listener)
+  return () => chatListeners.delete(listener)
 }
 
 export function connectCapsuleStream({ onEvent, onError }: CapsuleStreamCallbacks): void {
@@ -70,6 +77,7 @@ export function connectCapsuleStream({ onEvent, onError }: CapsuleStreamCallback
         try {
           const body = JSON.parse(msg.body) as ChatWsMessage
           chatCallbacks.onMessage?.(body)
+          chatListeners.forEach((listener) => listener(body))
         } catch (e) {
           console.error('WS chat parse error', e)
         }
@@ -92,4 +100,5 @@ export function disconnectCapsuleStream(): void {
   client = null
   connected = false
   chatCallbacks = {}
+  chatListeners.clear()
 }
