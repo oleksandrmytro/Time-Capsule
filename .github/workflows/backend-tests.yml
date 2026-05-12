@@ -1,4 +1,4 @@
-name: Tests
+name: Backend Tests
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
       - master
 
 jobs:
-  backend:
+  test:
     name: Run backend test suite
     runs-on: ubuntu-latest
 
@@ -28,46 +28,3 @@ jobs:
 
       - name: Run backend tests
         run: mvn -B -f backend/pom.xml test
-
-  frontend-e2e:
-    name: Run frontend E2E smoke test
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Cache Bun dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            frontend/node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock', 'frontend/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Cache Playwright browser
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: bun install --frozen-lockfile
-
-      - name: Install Playwright browser
-        working-directory: frontend
-        run: bunx playwright install --with-deps chromium
-
-      - name: Run frontend E2E tests
-        working-directory: frontend
-        run: bun run test:e2e

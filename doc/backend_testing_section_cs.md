@@ -85,23 +85,3 @@ mvn -B -f backend/pom.xml test
 ```
 
 Pokud nektery test selze, GitHub oznaci workflow jako neuspesny. Diky tomu je mozne pred sloucenim zmen videt, zda nova uprava nerozbila existujici backendovou funkcionalitu.
-
-## Frontendovy E2E smoke test
-
-Krome backendovych testu je doplnen jeden zakladni frontendovy E2E smoke test ve slozce `frontend/tests/e2e`.
-Test je implementovan pomoci Playwrightu a spousti se prikazem:
-
-```bash
-cd frontend
-bun run test:e2e
-```
-
-Test spusti Vite dev server, otevre verejnou hlavni stranku aplikace, namockuje zakladni API odpoved pro neautentizovaneho uzivatele a overi, ze:
-
-- aplikace se vyrenderuje v prohlizeci,
-- je viditelna navigace s nazvem `TimeCapsule`,
-- uzivatel muze prejit na stranku prihlaseni,
-- na prihlasovaci strance jsou dostupna pole pro e-mail a heslo,
-- pri zakladnim renderu nevznikne JavaScript runtime chyba.
-
-Tento test nepokryva kompletni scenar registrace, vytvoreni kapsle nebo praci s realnou databazi. Slouzi jako minimalni E2E kontrola, ze frontendova aplikace je spustitelna v prohlizeci a hlavni verejna navigace funguje. Plne E2E testy s backendem, databazi a testovacimi daty by byly vhodnym dalsim rozsirenim.
