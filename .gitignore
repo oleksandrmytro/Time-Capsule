@@ -36,6 +36,12 @@ build/
 node_modules/
 **/node_modules/
 
+# Test artifacts
+test-results/
+**/test-results/
+playwright-report/
+**/playwright-report/
+
 # Environment files
 *.env
 **/*.env
