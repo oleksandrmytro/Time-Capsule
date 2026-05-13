@@ -145,7 +145,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())           // Дозволяє всі запити без авторизації (бо це маршрути для входу та помилок)
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(authorization -> authorization
-                                .authorizationRequestResolver(new GoogleAccountSelectAuthorizationRequestResolver(clientRegistrationRepository))            // Використовує кастомний резолвер для запитів авторизації OAuth2 (щоб додати параметр prompt=select_account для Google)
+                                .authorizationRequestResolver(new AccountSelectAuthorizationRequestResolver(clientRegistrationRepository))            // Додає prompt=select_account для OAuth2 провайдерів, які підтримують вибір акаунта
                         )
                         .successHandler(oAuth2AuthenticationSuccessHandler)
                         .failureHandler(oAuth2AuthenticationFailureHandler)
